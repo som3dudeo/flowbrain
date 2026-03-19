@@ -9,9 +9,8 @@ __pycache__/
 dist/
 build/
 
-# Data (workflows downloaded at runtime — too large for git)
-data/workflows/
-data/chroma/
+# Data (downloaded/generated at runtime — never commit)
+data/
 
 # Environment & secrets
 .env
