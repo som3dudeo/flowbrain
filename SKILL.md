@@ -18,10 +18,10 @@ You have access to 8,000+ n8n automation workflows. These are **executable** —
 
 ## How to Execute an Automation
 
-**Endpoint:** `POST http://localhost:8000/auto`
+**Endpoint:** `POST http://127.0.0.1:8001/auto`
 
 ```bash
-curl -s -X POST http://localhost:8000/auto \
+curl -s -X POST http://127.0.0.1:8001/auto \
   -H "Content-Type: application/json" \
   -d '{"intent": "FULL DESCRIPTION OF WHAT TO DO WITH ALL DETAILS"}'
 ```
@@ -40,21 +40,21 @@ Parse the JSON response and show the user the `message` field.
 
 **"Send an email to john@acme.com saying the contract is ready"**
 ```bash
-curl -s -X POST http://localhost:8000/auto \
+curl -s -X POST http://127.0.0.1:8001/auto \
   -H "Content-Type: application/json" \
   -d '{"intent": "Send email to john@acme.com with subject Contract Ready and body: The contract is ready for your review"}'
 ```
 
 **"Post to Slack #general that the deploy is done"**
 ```bash
-curl -s -X POST http://localhost:8000/auto \
+curl -s -X POST http://127.0.0.1:8001/auto \
   -H "Content-Type: application/json" \
   -d '{"intent": "Send a Slack message to the #general channel: Deploy is done"}'
 ```
 
 **"Create a Notion page for today'\''s standup"**
 ```bash
-curl -s -X POST http://localhost:8000/auto \
+curl -s -X POST http://127.0.0.1:8001/auto \
   -H "Content-Type: application/json" \
   -d '{"intent": "Create a Notion page titled Daily Standup with content for today'\''s meeting notes"}'
 ```
@@ -62,7 +62,7 @@ curl -s -X POST http://localhost:8000/auto \
 ## Check Server Status
 
 ```bash
-curl -s http://localhost:8000/status
+curl -s http://127.0.0.1:8001/status
 ```
 
 If server is not running:
@@ -73,7 +73,7 @@ cd ~/Documents/n8n-flow-finder && source venv/bin/activate && python3 run.py --s
 ## Search Available Workflows
 
 ```bash
-curl -s -X POST http://localhost:8000/search \
+curl -s -X POST http://127.0.0.1:8001/search \
   -H "Content-Type: application/json" \
   -d '{"query": "what you are looking for", "top_k": 5}'
 ```

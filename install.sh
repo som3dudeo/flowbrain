@@ -110,8 +110,8 @@ echo "🚀 Starting n8n Flow Finder server..."
 echo "   (Downloading and indexing workflows in background — may take 2-3 min)"
 echo ""
 
-# Kill any existing instance on port 8000
-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+# Kill any existing instance on port 8001
+lsof -ti:8001 | xargs kill -9 2>/dev/null || true
 
 nohup bash -c "cd '$INSTALL_DIR' && source venv/bin/activate && python3 run.py --serve 2>&1" \
     > "$INSTALL_DIR/server.log" 2>&1 &
@@ -123,9 +123,9 @@ echo ""
 # Wait for server to be ready
 echo -n "   Waiting for server"
 for i in $(seq 1 30); do
-    if curl -sf http://localhost:8000/status &>/dev/null; then
+    if curl -sf http://localhost:8001/status &>/dev/null; then
         echo ""
-        echo "✓ Server is up at http://localhost:8000"
+        echo "✓ Server is up at http://localhost:8001"
         break
     fi
     echo -n "."
@@ -135,15 +135,15 @@ done
 echo ""
 
 # ── Final check ──────────────────────────────────────────────────────────────
-STATUS=$(curl -sf http://localhost:8000/status 2>/dev/null || echo '{}')
+STATUS=$(curl -sf http://localhost:8001/status 2>/dev/null || echo '{}')
 INDEXED=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('workflows_indexed', 0))" 2>/dev/null || echo "0")
 
 echo "================================================"
 echo "✅ Installation complete!"
 echo ""
 echo "   Workflows indexed: $INDEXED"
-echo "   Server:           http://localhost:8000"
-echo "   Chat UI:          http://localhost:8000"
+echo "   Server:           http://localhost:8001"
+echo "   Chat UI:          http://localhost:8001"
 echo ""
 
 if command -v openclaw &>/dev/null; then
@@ -157,7 +157,7 @@ fi
 
 echo ""
 echo "   📖 Next step: connect n8n for live execution"
-echo "      1. Import n8n_dispatcher.json into your n8n instance"
-echo "      2. Add N8N_DEFAULT_WEBHOOK=<url> to $INSTALL_DIR/.env"
+echo "      1. In your n8n instance, create a Webhook node at path 'flowbrain' (POST, 'When Last Node Finishes') and activate it"
+echo "      2. Create $INSTALL_DIR/.env: N8N_DEFAULT_WEBHOOK=http://localhost:5678/webhook/flowbrain FLOW_FINDER_URL=http://127.0.0.1:8001 PORT=8001"
 echo "      3. Restart: cd $INSTALL_DIR && source venv/bin/activate && python3 run.py --serve"
 echo ""
