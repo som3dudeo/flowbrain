@@ -22,7 +22,7 @@ OpenClaw config (add to your OpenClaw settings):
     "mcpServers": {
       "n8n-workflows": {
         "command": "python3",
-        "args": ["/Users/abdullahalbukhari/Documents/n8n-flow-finder/mcp_server.py"],
+        "args": ["~/Documents/flowbrain/mcp_server.py"],
         "env": {}
       }
     }

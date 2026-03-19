@@ -33,7 +33,7 @@ PORT = int(os.getenv("PORT", 8000))
 def banner():
     print(f"""
 {BOLD}╔══════════════════════════════════════════════════════╗
-║  ⚡  n8n Flow Finder                                 ║
+║  ⚡  FlowBrain                                        ║
 ║     Describe what you want → find the right workflow ║
 ╚══════════════════════════════════════════════════════╝{RESET}
 """)
@@ -201,7 +201,7 @@ def run_setup(rebuild: bool = False) -> bool:
 def start_server(open_browser: bool = True):
     """Start the FastAPI server."""
     print(f"\n{'─'*54}")
-    print(f"{GREEN}{BOLD}  🚀 Starting n8n Flow Finder...{RESET}")
+    print(f"{GREEN}{BOLD}  🧠 Starting FlowBrain...{RESET}")
     print(f"{'─'*54}")
     print(f"  Open in browser: {CYAN}http://localhost:{PORT}{RESET}")
     print(f"  API docs:        {CYAN}http://localhost:{PORT}/docs{RESET}")

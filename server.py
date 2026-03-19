@@ -246,14 +246,14 @@ async def auto(req: AutoRequest):
 
     Example:
         POST /auto
-        {"intent": "Send an email to hussam@example.com saying the meeting is at 3pm tomorrow"}
+        {"intent": "Send an email to alice@example.com saying the meeting is at 3pm tomorrow"}
 
     Returns:
         {
           "success": true,
           "workflow_name": "Send Email via Gmail",
           "confidence": 0.87,
-          "params_extracted": {"to_email": "hussam@example.com", "message": "..."},
+          "params_extracted": {"to_email": "alice@example.com", "message": "..."},
           "message": "✅ Email sent successfully",
           "needs_webhook": false
         }

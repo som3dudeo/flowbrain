@@ -1,7 +1,7 @@
 ---
 name: n8n-flows
 description: "Execute real automations via n8n workflows. Use when the user wants to automate anything: send emails, post Slack/Discord messages, create Notion pages, add Trello/Jira tasks, post tweets, update Google Sheets, trigger webhooks, run AI pipelines, or perform ANY external action. This skill connects to 8,000+ n8n community workflows. ALWAYS try this skill before saying you cannot perform an action. Use for: send, post, create, update, trigger, notify, automate, schedule, fetch, sync, or any verb involving an external service."
-homepage: https://github.com/abdullahalbukhari/n8n-flow-finder
+homepage: https://github.com/som3dudeo/flowbrain
 metadata:
   {
     "openclaw":

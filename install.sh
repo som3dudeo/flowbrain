@@ -5,12 +5,12 @@
 set -e
 
 REPO="https://github.com/som3dudeo/flowbrain.git"
-INSTALL_DIR="$HOME/Documents/n8n-flow-finder"
+INSTALL_DIR="$HOME/Documents/flowbrain"
 OPENCLAW_SKILLS_DIR="/opt/homebrew/lib/node_modules/openclaw/skills/n8n-flows"
 
 echo ""
-echo "⚡ n8n Flow Finder — OpenClaw Automation Skill"
-echo "================================================"
+echo "⚡ FlowBrain — OpenClaw Automation Skill"
+echo "========================================="
 echo ""
 
 # ── Check requirements ──────────────────────────────────────────────────────
