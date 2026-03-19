@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# ⚡ n8n Flow Finder — OpenClaw Automation Skill Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/abdullahalbukhari/n8n-flow-finder/main/install.sh | bash
+# ⚡ FlowBrain — OpenClaw Automation Skill Installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/som3dudeo/flowbrain/main/install.sh | bash
 
 set -e
 
-REPO="https://github.com/abdullahalbukhari/n8n-flow-finder.git"
+REPO="https://github.com/som3dudeo/flowbrain.git"
 INSTALL_DIR="$HOME/Documents/n8n-flow-finder"
 OPENCLAW_SKILLS_DIR="/opt/homebrew/lib/node_modules/openclaw/skills/n8n-flows"
 

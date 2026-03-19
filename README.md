@@ -1,4 +1,4 @@
-# ⚡ n8n Flow Finder — OpenClaw Automation Skill
+# ⚡ FlowBrain — OpenClaw Automation Skill
 
 Turn your OpenClaw AI agent into an automation powerhouse. This skill gives OpenClaw access to **8,000+ n8n community workflows** — send emails, post Slack messages, create Notion pages, trigger CI/CD, run AI pipelines, and more — all via natural language.
 
@@ -23,7 +23,7 @@ You → OpenClaw → n8n Flow Finder (semantic search) → n8n workflow → Resu
 ## One-Line Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/abdullahalbukhari/n8n-flow-finder/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/som3dudeo/flowbrain/main/install.sh | bash
 ```
 
 This will:
@@ -40,7 +40,7 @@ This will:
 ## Manual Setup
 
 ```bash
-git clone https://github.com/abdullahalbukhari/n8n-flow-finder.git ~/Documents/n8n-flow-finder
+git clone https://github.com/som3dudeo/flowbrain.git ~/Documents/flowbrain
 cd ~/Documents/n8n-flow-finder
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
