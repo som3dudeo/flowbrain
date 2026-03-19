@@ -1,0 +1,97 @@
+# ─────────────────────────────────────────────────────────────────
+# n8n Flow Finder — Docker Compose
+#
+# Starts everything you need in one command:
+#   docker compose up -d
+#
+# Services:
+#   n8n           → http://localhost:5678   (workflow editor)
+#   flow-finder   → http://localhost:8000   (semantic search UI)
+#   ollama        → http://localhost:11434  (local LLM, optional)
+#
+# First-time setup:
+#   docker compose run --rm flow-finder python run.py --setup
+#
+# ─────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── n8n workflow automation ───────────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - GENERIC_TIMEZONE=UTC
+      - N8N_USER_MANAGEMENT_DISABLED=false
+      # Uncomment to enable basic auth:
+      # - N8N_BASIC_AUTH_ACTIVE=true
+      # - N8N_BASIC_AUTH_USER=admin
+      # - N8N_BASIC_AUTH_PASSWORD=changeme
+    volumes:
+      - n8n_data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── n8n Flow Finder ───────────────────────────────────────────────────────
+  flow-finder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flow-finder
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - N8N_BASE_URL=http://n8n:5678
+      - PORT=8000
+      # Add webhook URLs here or in a .env file:
+      # - N8N_DEFAULT_WEBHOOK=http://n8n:5678/webhook/your-dispatcher
+    env_file:
+      - .env
+    volumes:
+      # Persist downloaded workflows and vector index between restarts
+      - ./data:/app/data
+    depends_on:
+      n8n:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Ollama — local LLM for description enrichment (optional) ─────────────
+  # This profile is disabled by default. Enable with:
+  #   docker compose --profile ollama up -d
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    profiles:
+      - ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    # Pull llama3.2 model on first start (small, fast, good for descriptions)
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2 && wait"]
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  n8n_data:
+    driver: local
+  ollama_data:
+    driver: local
