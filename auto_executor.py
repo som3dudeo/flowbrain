@@ -25,20 +25,14 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+from flowbrain.config import get_config as _get_config
 
-FLOWBRAIN_URL = os.getenv("FLOWBRAIN_URL", os.getenv("FLOW_FINDER_URL", "http://127.0.0.1:8001"))
-OLLAMA_URL      = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "llama3.2")
-N8N_BASE_URL    = os.getenv("N8N_BASE_URL", "http://localhost:5678")
-
-# Confidence below this: don't auto-execute (raised from 0.35 to 0.85 for safety)
-CONFIDENCE_THRESHOLD = float(os.getenv("FLOWBRAIN_MIN_AUTOEXEC_CONFIDENCE",
-                             os.getenv("AUTO_CONFIDENCE_THRESHOLD", "0.85")))
+_cfg = _get_config()
+FLOWBRAIN_URL        = _cfg.flow_finder_url
+OLLAMA_URL           = _cfg.ollama_url
+OLLAMA_MODEL         = _cfg.ollama_model
+N8N_BASE_URL         = _cfg.n8n_base_url
+CONFIDENCE_THRESHOLD = _cfg.min_autoexec_confidence
 
 
 @dataclass

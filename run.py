@@ -1,14 +1,15 @@
 """
-run.py — legacy convenience wrapper for FlowBrain.
+run.py — DEPRECATED legacy wrapper.
 
-DEPRECATED: prefer `python -m flowbrain ...` for all new usage.
-This wrapper remains for backward compatibility and delegates to the same codepaths.
+This file is kept ONLY for backward compatibility with existing LaunchAgents
+and scripts. All new usage should go through:
 
-Usage:
-  python run.py              → Full guided setup + start server
-  python run.py --serve      → Skip setup, just start the server
-  python run.py --setup      → Run setup only, don't start server
-  python run.py --rebuild    → Rebuild index from scratch, then serve
+    python -m flowbrain <command>
+
+Commands:
+    python -m flowbrain install    (replaces: python run.py)
+    python -m flowbrain start      (replaces: python run.py --serve)
+    python -m flowbrain reindex    (replaces: python run.py --setup / --rebuild)
 """
 
 import sys
@@ -17,6 +18,12 @@ import time
 import argparse
 import subprocess
 from pathlib import Path
+
+print(
+    "\033[93m⚠  run.py is DEPRECATED.\033[0m  "
+    "Use \033[96mpython -m flowbrain <command>\033[0m instead.\n"
+    "   See: python -m flowbrain --help\n"
+)
 
 # ── Load dotenv FIRST — before any os.getenv calls ───────────────────────────
 try:
@@ -42,7 +49,7 @@ def banner():
     print(f"""
 {BOLD}╔══════════════════════════════════════════════════════╗
 ║  ⚡  FlowBrain                                        ║
-║     Describe what you want → find the right workflow ║
+║     Describe what you want → route to the right agent║
 ╚══════════════════════════════════════════════════════╝{RESET}
 """)
 
@@ -240,7 +247,7 @@ def main():
     deprecation_notice()
 
     parser = argparse.ArgumentParser(
-        description="FlowBrain — all-in-one launcher",
+        description="FlowBrain — legacy launcher (prefer `python -m flowbrain`)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -260,7 +267,7 @@ Examples:
     if args.serve:
         # Just start the server — skip all setup checks
         if not index_is_built():
-            warn("Index not found. Run `flowbrain reindex` or `python run.py --setup` first.")
+            warn("Index not found. Run `python -m flowbrain reindex` first.")
             sys.exit(1)
         start_server(open_browser=not args.no_browser)
 

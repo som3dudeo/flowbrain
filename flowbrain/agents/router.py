@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 
 from flowbrain.agents.registry import AgentProfile, get_registry
+
+
+def _word_match(keyword: str, text: str) -> bool:
+    """Check if keyword appears as a whole word in text (not as a substring)."""
+    return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text))
 
 
 @dataclass
@@ -39,28 +45,35 @@ def _score_agent(intent: str, agent: AgentProfile) -> tuple[float, list[str]]:
     score = 0.05
     reasons: list[str] = []
 
+    # Track which words already matched to avoid double-counting
+    matched_words: set[str] = set()
+
     for keyword in agent.keywords:
-        if keyword.lower() in text:
+        kw = keyword.lower()
+        if _word_match(kw, text):
             score += 0.18
             reasons.append(f"matched keyword '{keyword}'")
+            matched_words.add(kw)
 
     for capability in agent.capabilities:
-        if capability.lower() in text:
+        cap = capability.lower()
+        if _word_match(cap, text) and cap not in matched_words:
             score += 0.12
             reasons.append(f"matched capability '{capability}'")
+            matched_words.add(cap)
 
     for keyword in _KEYWORD_BONUS.get(agent.handler, []):
-        if keyword in text:
+        if _word_match(keyword, text) and keyword not in matched_words:
             score += 0.08
             reasons.append(f"handler '{agent.handler}' fits '{keyword}'")
 
-    if agent.handler == "workflow" and any(x in text for x in ["workflow", "n8n", "automation"]):
+    if agent.handler == "workflow" and any(_word_match(x, text) for x in ["workflow", "n8n", "automation"]):
         score += 0.15
         reasons.append("workflow-oriented request")
-    if agent.handler == "acp" and any(x in text for x in ["repo", "fix", "implement", "debug"]):
+    if agent.handler == "acp" and any(_word_match(x, text) for x in ["repo", "fix", "implement", "debug"]):
         score += 0.15
         reasons.append("coding-oriented request")
-    if agent.handler == "openclaw" and any(x in text for x in ["agent manager", "delegate", "orchestrate", "session"]):
+    if agent.handler == "openclaw" and any(_word_match(x, text) for x in ["agent manager", "delegate", "orchestrate", "session"]):
         score += 0.18
         reasons.append("orchestration-oriented request")
 

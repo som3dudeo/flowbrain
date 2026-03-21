@@ -167,7 +167,7 @@ def cmd_start(args):
     """Start the FlowBrain server."""
     cfg = get_config()
 
-    print(f"\n{BOLD}FlowBrain v2.3.0{RESET}")
+    print(f"\n{BOLD}FlowBrain v{__version__}{RESET}")
     print(f"{'─' * 50}")
     print(f"  Server:   {CYAN}http://{cfg.host}:{cfg.port}{RESET}")
     print(f"  API docs: {CYAN}http://{cfg.host}:{cfg.port}/docs{RESET}")

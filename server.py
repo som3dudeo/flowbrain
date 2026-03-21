@@ -38,10 +38,19 @@ except ImportError:
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from flowbrain.logging_config import configure_logging
+from flowbrain.middleware.auth import AuthMiddleware
+from flowbrain.middleware.ratelimit import RateLimitMiddleware
+from flowbrain.middleware.tracing import TracingMiddleware
+
+# Configure structured logging before anything else logs
+configure_logging()
 
 from flowbrain import __version__
 from flowbrain.agents import list_agents, route_request
+from flowbrain.agents.delegation import build_delegation_plan
 from flowbrain.policies.risk import classify_risk, get_affected_systems
 from flowbrain.policies.preview import build_preview
 from flowbrain.policies.confidence import should_auto_execute as policy_should_auto_execute
@@ -106,26 +115,33 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="FlowBrain",
-    description="AI-native automation operating system — semantic workflow search and execution",
+    description="Agent-routed workflow automation for n8n — semantic search, safety gating, and execution",
     version=__version__,
     lifespan=lifespan,
 )
 
+# ── Middleware (order matters: outermost runs first) ──────────────────────────
+app.add_middleware(TracingMiddleware)     # Always: request IDs + access logging
+app.add_middleware(RateLimitMiddleware)   # Enabled when API key is set or forced
+app.add_middleware(AuthMiddleware)        # Enabled when FLOWBRAIN_API_KEY is set
+
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
+MAX_INTENT_LEN = 2000
+
 class ChatRequest(BaseModel):
-    message:    str
+    message:    str = Field(..., min_length=1, max_length=MAX_INTENT_LEN)
     session_id: str | None = None
-    top_k:      int = 5
+    top_k:      int = Field(default=5, ge=1, le=50)
 
 class SearchRequest(BaseModel):
-    query:  str
-    top_k:  int = 5
+    query:  str = Field(..., min_length=1, max_length=MAX_INTENT_LEN)
+    top_k:  int = Field(default=5, ge=1, le=50)
 
 class ExecuteRequest(BaseModel):
-    workflow_id: str
-    query:       str
+    workflow_id: str = Field(..., min_length=1, max_length=200)
+    query:       str = Field(..., min_length=1, max_length=MAX_INTENT_LEN)
     params:      dict = {}
     session_id:  str | None = None
 
@@ -137,18 +153,18 @@ class AutoRequest(BaseModel):
     auto_execute defaults to False (preview-only). Set to True to actually
     fire the webhook, subject to confidence and risk gating.
     """
-    intent: str
+    intent: str = Field(..., min_length=1, max_length=MAX_INTENT_LEN)
     params: dict = {}
     session_id: str | None = None
     auto_execute: bool = False
 
 
 class RouteRequest(BaseModel):
-    intent: str
+    intent: str = Field(..., min_length=1, max_length=MAX_INTENT_LEN)
 
 
 class ManageRequest(BaseModel):
-    intent: str
+    intent: str = Field(..., min_length=1, max_length=MAX_INTENT_LEN)
     auto_execute: bool = False
     session_id: str | None = None
     params: dict = {}
@@ -160,13 +176,27 @@ class ManageRequest(BaseModel):
 async def status():
     router = get_router()
     n8n_ok = await _check_n8n()
+    from embedding import is_using_fallback
+
+    auth_enabled = bool(os.getenv("FLOWBRAIN_API_KEY"))
+    rate_limit_enabled = auth_enabled or os.getenv("FLOWBRAIN_RATE_LIMIT_ENABLED", "").lower() in ("true", "1")
+
     return {
         "status": "ready" if router.is_ready else "no_index",
+        "version": __version__,
         "workflows_indexed": router.workflow_count if router.is_ready else 0,
         "n8n_connected": n8n_ok,
         "n8n_url": N8N_BASE_URL,
         "active_sessions": len(_conversations),
+        "max_sessions": MAX_SESSIONS,
         "registered_agents": len(list_agents()),
+        "embedding_quality": "reduced (fallback)" if is_using_fallback() else "full (transformer)",
+        "security": {
+            "auth_enabled": auth_enabled,
+            "rate_limit_enabled": rate_limit_enabled,
+            "bind_address": HOST,
+            "localhost_only": HOST in ("127.0.0.1", "localhost", "::1"),
+        },
     }
 
 
@@ -200,8 +230,11 @@ async def manage(req: ManageRequest):
         )
         response["workflow_result"] = await auto(auto_req)
     else:
-        response["delegation_ready"] = True
+        delegation = build_delegation_plan(req.intent, plan)
+        response["delegation"] = delegation.to_dict()
+        response["delegation_ready"] = delegation.execution_ready
         response["next_step"] = plan.downstream_action
+        response["fallback_message"] = delegation.fallback_message
 
     return response
 
@@ -330,7 +363,7 @@ async def execute(req: ExecuteRequest):
 
 class PreviewRequest(BaseModel):
     """Preview an automation — no side effects."""
-    intent: str
+    intent: str = Field(..., min_length=1, max_length=MAX_INTENT_LEN)
     session_id: str | None = None
 
 
@@ -844,7 +877,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     <div class="logo-icon">⚡</div>
     <div class="logo-text">
       <h1>FlowBrain</h1>
-      <p>AI-native automation operating system</p>
+      <p>Agent manager for OpenClaw + n8n</p>
     </div>
   </div>
   <div class="header-right">

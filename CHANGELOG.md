@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.5.0 — Public Beta Polish + Hardening
+
+### Public Release Polish
+- Rewrote the README around the actual product: an agent manager for OpenClaw + n8n.
+- Added MIT `LICENSE`.
+- Moved release-audit material out of the repo root into `docs/audits/` and `_deprecated/`.
+- Updated legacy launcher and web UI copy to match the new agent-manager positioning.
+
+### Runtime Hardening
+- Added structured logging config plus auth, rate-limit, and tracing middleware.
+- Added bounded in-memory session history with LRU-style eviction.
+- Replaced silent exception paths with logging in the core runtime.
+- Added delegation-plan support for non-workflow agent routes.
+- Added request-size validation and extra integration tests for `/manage`, `/auto`, `/preview`, middleware, and embeddings.
+
+---
+
 ## v2.4.0 — Agent Manager Upgrade
 
 ### Agent Management
