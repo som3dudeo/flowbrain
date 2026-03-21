@@ -11,16 +11,19 @@ any human involvement. Given a plain-English intent, it:
 
 This module is called by:
   - server.py /auto endpoint (for web UI and OpenClaw HTTP calls)
-  - mcp_server.py run_automation tool (for MCP/native OpenClaw integration)
+  - FlowBrain/OpenClaw HTTP integrations that call the /auto endpoint
 """
 
 import os
 import re
 import json
+import logging
 import httpx
 import asyncio
 from pathlib import Path
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 try:
     from dotenv import load_dotenv
@@ -170,8 +173,8 @@ JSON:"""
                         # Merge with regex extraction (LLM takes priority)
                         regex_params = self.extract(text)
                         return {**regex_params, **extracted}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("LLM parameter extraction failed; falling back to regex: %s", e)
 
         # Fallback to regex
         return self.extract(text)
@@ -366,7 +369,8 @@ async def _check_ollama() -> bool:
         async with httpx.AsyncClient(timeout=2) as client:
             r = await client.get(f"{OLLAMA_URL}/api/tags")
             return r.status_code == 200
-    except Exception:
+    except Exception as e:
+        logger.debug("Ollama unavailable, using regex-only extraction: %s", e)
         return False
 
 

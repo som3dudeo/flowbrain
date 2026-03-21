@@ -1,8 +1,8 @@
 """
-run.py — The single command to rule them all.
+run.py — legacy convenience wrapper for FlowBrain.
 
-This is the ONE script you need. It guides you through the full setup
-and starts the server automatically.
+DEPRECATED: prefer `python -m flowbrain ...` for all new usage.
+This wrapper remains for backward compatibility and delegates to the same codepaths.
 
 Usage:
   python run.py              → Full guided setup + start server
@@ -45,6 +45,11 @@ def banner():
 ║     Describe what you want → find the right workflow ║
 ╚══════════════════════════════════════════════════════╝{RESET}
 """)
+
+def deprecation_notice():
+    warn("run.py is deprecated. Prefer `python -m flowbrain ...` for new usage.")
+
+
 
 def step(n: int, total: int, msg: str):
     print(f"\n{CYAN}[{n}/{total}]{RESET} {BOLD}{msg}{RESET}")
@@ -232,6 +237,7 @@ def start_server(open_browser: bool = False):
 
 def main():
     banner()
+    deprecation_notice()
 
     parser = argparse.ArgumentParser(
         description="FlowBrain — all-in-one launcher",

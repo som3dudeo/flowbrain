@@ -16,6 +16,7 @@ This is the core "intelligence" of the whole project.
 """
 
 import re
+import logging
 import chromadb
 from pathlib import Path
 from dataclasses import dataclass
@@ -28,6 +29,8 @@ COLLECTION_NAME = "n8n_workflows"
 # Confidence threshold: results below this score are considered poor matches.
 # Range: 0.0 (no match) to 1.0 (perfect match). 0.30 is a good starting point.
 MIN_CONFIDENCE = 0.30
+
+logger = logging.getLogger(__name__)
 
 
 # ── Query expansion ─────────────────────────────────────────────────────────
@@ -110,8 +113,8 @@ class WorkflowRouter:
             return False
         ok = self._reload_collection()
         if ok and is_using_fallback():
-            print("[Router] Using fallback embeddings — search quality reduced.")
-            print("[Router] Run `flowbrain reindex` with internet to upgrade.")
+            logger.warning("[Router] Using fallback embeddings — search quality reduced.")
+            logger.warning("[Router] Run `flowbrain reindex` with internet to upgrade.")
         return ok
 
     def _reload_collection(self) -> bool:
@@ -133,7 +136,7 @@ class WorkflowRouter:
         except Exception as e:
             self._ready = False
             self._collection = None
-            print(f"[Router] Failed to load index: {e}")
+            logger.warning("[Router] Failed to load index: %s", e)
             return False
 
     @property
@@ -146,12 +149,13 @@ class WorkflowRouter:
             return 0
         try:
             return self._collection.count()
-        except Exception:
+        except Exception as e:
+            logger.debug("Workflow count failed, attempting reload: %s", e)
             if self._reload_collection():
                 try:
                     return self._collection.count()
-                except Exception:
-                    pass
+                except Exception as inner_e:
+                    logger.debug("Workflow count still failing after reload: %s", inner_e)
             return 0
 
     def search(self, query: str, top_k: int = 5) -> list[WorkflowMatch]:
@@ -189,7 +193,8 @@ class WorkflowRouter:
                 n_results=max(fetch_k, 1),
                 include=["metadatas", "distances", "documents"]
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("Primary Chroma query failed, attempting reload: %s", e)
             if not self._reload_collection():
                 raise RuntimeError("Router index became unavailable. Run `flowbrain reindex`.")
             results = self._collection.query(

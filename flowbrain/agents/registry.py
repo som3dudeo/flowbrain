@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import logging
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -84,7 +87,8 @@ def _load_file_agents() -> list[AgentProfile]:
         for item in data if isinstance(data, list) else []:
             agents.append(AgentProfile(**item))
         return agents
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to load custom agents from %s: %s", path, e)
         return []
 
 

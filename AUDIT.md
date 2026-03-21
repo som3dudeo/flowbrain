@@ -10,7 +10,7 @@
 - **Verdict**: FALSE ADVERTISING. Must unify to actual count.
 
 ### 1.2 Path Naming Inconsistency
-- Repo directory: `~/Documents/n8n-flow-finder/`
+- Repo directory: `~/Documents/flowbrain/` (legacy `~/Documents/n8n-flow-finder/` for existing setups)
 - Git remote: `github.com/som3dudeo/flowbrain`
 - install.sh INSTALL_DIR: `$HOME/Documents/flowbrain` (line 8)
 - mcp_server.py docstring: `~/Documents/flowbrain/mcp_server.py` (line 25)

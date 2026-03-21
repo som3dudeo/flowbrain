@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from flowbrain.agents.registry import list_agents
+from flowbrain.agents import router as agent_router
 from flowbrain.agents.router import route_request
 
 
@@ -36,3 +37,12 @@ def test_route_orchestration_request():
     plan = route_request('orchestrate agents across openclaw sessions')
     assert plan.selected_agent['id'] == 'openclaw-ops-agent'
     assert plan.execution_mode == 'openclaw'
+
+
+def test_route_raises_when_no_agents_registered(monkeypatch):
+    monkeypatch.setattr(agent_router, 'get_registry', lambda: [])
+    try:
+        route_request('route this somehow')
+        assert False, 'Expected ValueError when no agents are registered'
+    except ValueError as e:
+        assert 'No agents registered' in str(e)

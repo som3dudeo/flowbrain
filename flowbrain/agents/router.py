@@ -87,7 +87,8 @@ def route_request(intent: str) -> AgentRoute:
             best_score = score
             best_reasons = reasons
 
-    assert best_agent is not None
+    if best_agent is None:
+        raise ValueError("No agents registered")
 
     requires_human_approval = best_agent.safety_mode in {"preview-first", "supervised"}
     downstream_action = _HANDLER_ACTIONS.get(best_agent.handler, "manual-review")

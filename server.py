@@ -22,11 +22,12 @@ import os
 import uuid
 import json
 import time
+import logging
 import httpx
 from pathlib import Path
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
-from collections import defaultdict
+from collections import OrderedDict
 
 # ── Load dotenv FIRST ────────────────────────────────────────────────────────
 try:
@@ -41,6 +42,10 @@ from pydantic import BaseModel
 
 from flowbrain import __version__
 from flowbrain.agents import list_agents, route_request
+from flowbrain.policies.risk import classify_risk, get_affected_systems
+from flowbrain.policies.preview import build_preview
+from flowbrain.policies.confidence import should_auto_execute as policy_should_auto_execute
+from flowbrain.state.db import record_preview, new_preview_id, record_run
 from router import get_router
 from indexer import get_index_stats
 from auto_executor import get_executor, AutoResult
@@ -55,15 +60,34 @@ N8N_BASE_URL = os.getenv("N8N_BASE_URL", "http://localhost:5678")
 MIN_AUTOEXEC_CONFIDENCE = float(os.getenv("FLOWBRAIN_MIN_AUTOEXEC_CONFIDENCE", "0.85"))
 MIN_PREVIEW_CONFIDENCE  = float(os.getenv("FLOWBRAIN_MIN_PREVIEW_CONFIDENCE", "0.40"))
 
+logger = logging.getLogger(__name__)
+
 # In-memory conversation history (keyed by session_id)
-# For production, swap with Redis or a database
-_conversations: dict[str, list[dict]] = defaultdict(list)
+# Bounded to avoid unbounded growth under many unique session IDs.
+_conversations: OrderedDict[str, list[dict]] = OrderedDict()
 MAX_HISTORY = 20  # messages per session
+MAX_SESSIONS = int(os.getenv("FLOWBRAIN_MAX_SESSIONS", "1000"))
 
 
 def get_webhook_url(workflow_id: str) -> str | None:
     env_key = f"N8N_WEBHOOK_{workflow_id}"
     return os.getenv(env_key) or os.getenv("N8N_DEFAULT_WEBHOOK")
+
+
+def _touch_session(session_id: str) -> list[dict]:
+    history = _conversations.pop(session_id, [])
+    _conversations[session_id] = history
+    while len(_conversations) > MAX_SESSIONS:
+        evicted_session_id, _ = _conversations.popitem(last=False)
+        logger.warning("Evicted conversation history for session %s (max sessions=%s)", evicted_session_id, MAX_SESSIONS)
+    return history
+
+
+def _append_conversation(session_id: str, message: dict):
+    history = _touch_session(session_id)
+    history.append(message)
+    if len(history) > MAX_HISTORY * 2:
+        del history[:-MAX_HISTORY * 2]
 
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -207,7 +231,7 @@ async def chat(req: ChatRequest):
     message    = req.message.strip()
 
     # Store user message in history
-    _conversations[session_id].append({
+    _append_conversation(session_id, {
         "role": "user", "content": message, "time": _now()
     })
 
@@ -239,22 +263,19 @@ async def chat(req: ChatRequest):
         )
 
     # Store assistant response in history
-    _conversations[session_id].append({
+    _append_conversation(session_id, {
         "role": "assistant",
         "content": reply,
         "workflows": results,
         "time": _now(),
     })
 
-    # Trim history
-    if len(_conversations[session_id]) > MAX_HISTORY * 2:
-        _conversations[session_id] = _conversations[session_id][-MAX_HISTORY * 2:]
-
     return {
-        "reply":      reply,
-        "workflows":  results,
+        "reply": reply,
+        "workflows": results,
         "session_id": session_id,
-        "count":      len(results),
+        "count": len(results),
+        "agent_route": route_plan.__dict__,
     }
 
 
@@ -346,9 +367,6 @@ async def preview(req: PreviewRequest):
     params = executor.extractor.extract(req.intent, best.nodes)
 
     # Risk classification / preview policy
-    from flowbrain.policies.risk import classify_risk, get_affected_systems
-    from flowbrain.policies.preview import build_preview
-
     risk = classify_risk(best.nodes, best.name)
     systems = get_affected_systems(best.nodes)
     preview = build_preview(
@@ -373,7 +391,6 @@ async def preview(req: PreviewRequest):
 
     # Record preview in state
     try:
-        from flowbrain.state.db import record_preview, new_preview_id
         record_preview(
             preview_id=new_preview_id(),
             intent=req.intent,
@@ -386,8 +403,8 @@ async def preview(req: PreviewRequest):
             blocked=blocked,
             block_reason=block_reason,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to record preview %s: %s", req.intent[:80], e)
 
     return {
         "intent": req.intent,
@@ -433,7 +450,7 @@ async def auto(req: AutoRequest):
     session_id = req.session_id or str(uuid.uuid4())
     run_id = f"run_{uuid.uuid4().hex[:12]}"
 
-    _conversations[session_id].append({
+    _append_conversation(session_id, {
         "role": "user", "content": req.intent, "time": _now(), "mode": "auto"
     })
 
@@ -454,9 +471,6 @@ async def auto(req: AutoRequest):
     params.update(req.params)  # user-provided params override
 
     # ── Step 3: Risk + confidence classification (no side effects) ──
-    from flowbrain.policies.risk import classify_risk, get_affected_systems
-    from flowbrain.policies.confidence import should_auto_execute as _should_auto
-
     risk = classify_risk(wf_nodes, best.name)
     systems = get_affected_systems(wf_nodes)
 
@@ -470,7 +484,7 @@ async def auto(req: AutoRequest):
     elif best.confidence < MIN_AUTOEXEC_CONFIDENCE:
         block_reason = (f"Confidence {int(best.confidence*100)}% is below "
                         f"auto-execution threshold ({int(MIN_AUTOEXEC_CONFIDENCE*100)}%)")
-    elif not _should_auto(best.confidence, risk.value, auto_execute_requested=True):
+    elif not policy_should_auto_execute(best.confidence, risk.value, auto_execute_requested=True):
         block_reason = f"Blocked by safety policy (risk={risk.value}, confidence={int(best.confidence*100)}%)"
     else:
         execution_allowed = True
@@ -527,7 +541,6 @@ async def auto(req: AutoRequest):
 
     # Record in durable state
     try:
-        from flowbrain.state.db import record_run
         record_run(
             run_id=run_id, intent=req.intent,
             workflow_id=best.workflow_id, workflow_name=best.name,
@@ -538,10 +551,10 @@ async def auto(req: AutoRequest):
             needs_webhook=needs_webhook, source_url=best.source_url,
             duration_ms=duration_ms, risk_level=risk.value,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to record run %s: %s", run_id, e)
 
-    _conversations[session_id].append({
+    _append_conversation(session_id, {
         "role": "assistant", "content": message,
         "workflow_name": best.name, "success": success, "time": _now(),
     })
@@ -572,12 +585,11 @@ def _record_and_log(run_id, req, session_id, msg, t0):
     """Helper to record a failed/empty run."""
     duration_ms = int((time.time() - t0) * 1000)
     try:
-        from flowbrain.state.db import record_run
         record_run(run_id=run_id, intent=req.intent, success=False,
                    error_message=msg, duration_ms=duration_ms, auto_execute=req.auto_execute)
-    except Exception:
-        pass
-    _conversations.setdefault(session_id, []).append({
+    except Exception as e:
+        logger.warning("Failed to record failed run %s: %s", run_id, e)
+    _append_conversation(session_id, {
         "role": "assistant", "content": msg, "success": False, "time": _now(),
     })
 
@@ -585,14 +597,14 @@ def _record_and_log(run_id, req, session_id, msg, t0):
 @app.get("/history/{session_id}")
 async def history(session_id: str):
     """Return conversation history for a session."""
-    return {"session_id": session_id, "messages": _conversations.get(session_id, [])}
+    return {"session_id": session_id, "messages": _touch_session(session_id) if session_id in _conversations else []}
 
 
 @app.delete("/history/{session_id}")
 async def clear_history(session_id: str):
     """Clear conversation history for a session."""
-    _conversations.pop(session_id, None)
-    return {"cleared": True}
+    removed = _conversations.pop(session_id, None) is not None
+    return {"cleared": removed}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -602,12 +614,13 @@ async def _check_n8n() -> bool:
         async with httpx.AsyncClient(timeout=3) as client:
             r = await client.get(f"{N8N_BASE_URL}/healthz")
             return r.status_code == 200
-    except Exception:
+    except Exception as e:
+        logger.debug("n8n health check failed: %s", e)
         return False
 
 
 def _now() -> str:
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
