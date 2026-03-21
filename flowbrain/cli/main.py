@@ -35,6 +35,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 os.chdir(str(_PROJECT_ROOT))
 
 from flowbrain import __version__
+from flowbrain.agents import list_agents as list_registered_agents, route_request
 from flowbrain.config import get_config
 
 BOLD = "\033[1m"
@@ -199,6 +200,7 @@ def cmd_status(args):
             print(f"  Workflows:  {data.get('workflows_indexed', 0)}")
             print(f"  n8n:        {'connected' if data.get('n8n_connected') else 'not connected'}")
             print(f"  Sessions:   {data.get('active_sessions', 0)}")
+            print(f"  Agents:     {data.get('registered_agents', 0)}")
             print(f"  Endpoint:   http://{cfg.host}:{cfg.port}")
             print()
         else:
@@ -207,6 +209,45 @@ def cmd_status(args):
         print(f"\n  {RED}FlowBrain is not running{RESET}")
         print(f"  Start with: python -m flowbrain start\n")
         sys.exit(1)
+
+
+# ── agents / route ───────────────────────────────────────────────────────────
+
+def cmd_agents(args):
+    """List registered agents."""
+    agents = list_registered_agents()
+    print(f"\n{BOLD}Registered Agents{RESET}")
+    print(f"{'─' * 70}")
+    for agent in agents:
+        caps = ', '.join(agent.get('capabilities', [])[:5]) or 'none'
+        print(f"\n  {BOLD}{agent['name']}{RESET}  [{agent['id']}]")
+        print(f"    role: {agent['role']} | handler: {agent['handler']} | safety: {agent['safety_mode']}")
+        print(f"    {agent['description']}")
+        print(f"    capabilities: {caps}")
+    print()
+
+
+def cmd_route(args):
+    """Route an intent to the best agent."""
+    intent = " ".join(args.intent)
+    if not intent:
+        print("Usage: python -m flowbrain route <intent>")
+        sys.exit(1)
+
+    plan = route_request(intent)
+    print(f"\n{BOLD}Agent Route{RESET}")
+    print(f"{'─' * 60}")
+    print(f"  Intent:      {intent}")
+    print(f"  Selected:    {plan.selected_agent['name']} ({plan.selected_agent['id']})")
+    print(f"  Mode:        {plan.execution_mode}")
+    print(f"  Next step:   {plan.downstream_action}")
+    print(f"  Confidence:  {int(plan.score * 100)}%")
+    print(f"  Approval:    {'yes' if plan.requires_human_approval else 'no'}")
+    if plan.reasoning:
+        print("  Why:")
+        for reason in plan.reasoning[:5]:
+            print(f"    - {reason}")
+    print()
 
 
 # ── search ───────────────────────────────────────────────────────────────────
@@ -419,12 +460,14 @@ def _fail(msg):
 def main():
     parser = argparse.ArgumentParser(
         prog="flowbrain",
-        description="FlowBrain — AI-native automation operating system (requires Python 3.10+)",
+        description="FlowBrain — agent manager for OpenClaw and n8n (requires Python 3.10+)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""{DIM}Examples:
   flowbrain install                           One-command setup
   flowbrain doctor                            Check system health
   flowbrain start                             Start the server
+  flowbrain agents                            List registered agents
+  flowbrain route "fix repo bug"             Show which agent would handle it
   flowbrain search "slack notification"       Find workflows
   flowbrain preview "email alice@co.com"      Preview without executing
   flowbrain run "post to #general done"       Execute an automation
@@ -450,6 +493,15 @@ def main():
     # status
     p = sub.add_parser("status", help="Show server status")
     p.set_defaults(func=cmd_status)
+
+    # agents
+    p = sub.add_parser("agents", help="List registered agents")
+    p.set_defaults(func=cmd_agents)
+
+    # route
+    p = sub.add_parser("route", help="Route an intent to the best agent")
+    p.add_argument("intent", nargs="+", help="What you want handled")
+    p.set_defaults(func=cmd_route)
 
     # search
     p = sub.add_parser("search", help="Search for workflows")

@@ -23,11 +23,21 @@
 flowbrain doctor     — Check health of all components
 flowbrain start      — Start the server (foreground)
 flowbrain status     — Show server status
+flowbrain agents     — List registered agents
+flowbrain route      — Route a request to the best agent
 flowbrain search     — Semantic search for workflows
 flowbrain preview    — Preview an automation (no side effects)
 flowbrain run        — Execute an automation
 flowbrain logs       — Show recent logs
 ```
+
+## Agent Manager Model
+- **Registry**: Built-in + optional file-backed agents in `data/agents.json`
+- **Primary handlers**: `workflow`, `acp`, `analysis`, `openclaw`
+- **Routing outputs**: selected agent, score, reasons, approval requirement, downstream action
+- **Management endpoints**: `/agents`, `/route`, `/manage`
+- **Workflow path**: route → search/re-rank → parameter extraction → preview/execute
+- **Non-workflow path**: route → delegation plan for coding / research / OpenClaw ops
 
 ## Safety Model
 - **Auto-execute threshold**: 0.85 (env: `FLOWBRAIN_MIN_AUTOEXEC_CONFIDENCE`)

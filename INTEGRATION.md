@@ -46,11 +46,10 @@ User → OpenClaw (GPT-5.4)
      → reads n8n-flows SKILL.md from ~/.openclaw/workspace/skills/
      → decides to use FlowBrain
      → exec tool runs /usr/bin/curl (approved via autoAllowSkills=true)
-     → POST http://127.0.0.1:8001/auto  {"intent": "..."}
-     → FlowBrain searches 450 indexed workflows
-     → finds best match
-     → POSTs to n8n webhook at localhost:5678/webhook/flowbrain
-     → n8n executes the workflow
+     → POST http://127.0.0.1:8001/manage  {"intent": "..."}
+     → FlowBrain routes to the best agent
+       → workflow path: search 450 indexed workflows → preview/execute via n8n
+       → coding/research/OpenClaw path: return delegation plan to the caller
      → result returned to OpenClaw → shown to user
 ```
 

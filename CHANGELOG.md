@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.4.0 — Agent Manager Upgrade
+
+### Agent Management
+- Added `flowbrain.agents` package with a built-in agent registry and optional file-backed overrides.
+- Added agent-routing engine that chooses between workflow automation, coding, research, and OpenClaw orchestration handlers.
+- Added API endpoints: `/agents`, `/route`, and `/manage`.
+- Added CLI commands: `flowbrain agents` and `flowbrain route`.
+- `/status` now reports the number of registered agents.
+- `/chat` now returns agent-route metadata alongside workflow matches.
+
+### Validation
+- Added tests for agent registry, routing decisions, and agent-manager endpoints.
+- End-to-end validation now covers API routing plus workflow-manager behavior.
+
+---
+
 ## v2.3.0 — Offline-Resilient Index + Final Consistency Pass
 
 ### Embedding System

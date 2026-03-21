@@ -3,12 +3,15 @@ server.py — FlowBrain FastAPI server with chat UI and automation API
 
 Endpoints:
   GET  /           → Full chat web interface
+  GET  /agents     → Registered agents and capabilities
+  POST /route      → Route a request to the best agent
+  POST /manage     → Agent-manager decision + execution/delegation plan
   POST /chat       → Main endpoint (OpenClaw + web UI use this)
   POST /search     → Raw semantic search (returns JSON)
   POST /preview    → Preview an automation (no side effects)
   POST /auto       → Find + optionally execute a workflow
   POST /execute    → Trigger a specific workflow via n8n webhook
-  GET  /status     → Health check + index stats
+  GET  /status     → Health check + index/agent stats
   GET  /docs       → Auto-generated API documentation
 
 Run: python -m flowbrain start   (recommended)
@@ -37,6 +40,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from flowbrain import __version__
+from flowbrain.agents import list_agents, route_request
 from router import get_router
 from indexer import get_index_stats
 from auto_executor import get_executor, AutoResult
@@ -109,10 +113,21 @@ class AutoRequest(BaseModel):
     auto_execute defaults to False (preview-only). Set to True to actually
     fire the webhook, subject to confidence and risk gating.
     """
-    intent:     str
-    params:     dict = {}           # optional override params
+    intent: str
+    params: dict = {}
     session_id: str | None = None
-    auto_execute: bool = False      # safe default: preview only
+    auto_execute: bool = False
+
+
+class RouteRequest(BaseModel):
+    intent: str
+
+
+class ManageRequest(BaseModel):
+    intent: str
+    auto_execute: bool = False
+    session_id: str | None = None
+    params: dict = {}
 
 
 # ── API Routes ────────────────────────────────────────────────────────────────
@@ -122,12 +137,49 @@ async def status():
     router = get_router()
     n8n_ok = await _check_n8n()
     return {
-        "status":            "ready" if router.is_ready else "no_index",
-        "workflows_indexed":  router.workflow_count if router.is_ready else 0,
-        "n8n_connected":      n8n_ok,
-        "n8n_url":            N8N_BASE_URL,
-        "active_sessions":    len(_conversations),
+        "status": "ready" if router.is_ready else "no_index",
+        "workflows_indexed": router.workflow_count if router.is_ready else 0,
+        "n8n_connected": n8n_ok,
+        "n8n_url": N8N_BASE_URL,
+        "active_sessions": len(_conversations),
+        "registered_agents": len(list_agents()),
     }
+
+
+@app.get("/agents")
+async def agents():
+    registry = list_agents()
+    return {"count": len(registry), "agents": registry}
+
+
+@app.post("/route")
+async def route(req: RouteRequest):
+    plan = route_request(req.intent)
+    return {"intent": req.intent, **plan.__dict__}
+
+
+@app.post("/manage")
+async def manage(req: ManageRequest):
+    plan = route_request(req.intent)
+    response = {
+        "intent": req.intent,
+        "route": plan.__dict__,
+        "manager_message": f"Selected {plan.selected_agent['name']} via {plan.execution_mode} mode.",
+    }
+
+    if plan.execution_mode == "workflow":
+        auto_req = AutoRequest(
+            intent=req.intent,
+            params=req.params,
+            session_id=req.session_id,
+            auto_execute=req.auto_execute,
+        )
+        response["workflow_result"] = await auto(auto_req)
+    else:
+        response["delegation_ready"] = True
+        response["next_step"] = plan.downstream_action
+
+    return response
 
 
 @app.post("/chat")
@@ -158,6 +210,9 @@ async def chat(req: ChatRequest):
     _conversations[session_id].append({
         "role": "user", "content": message, "time": _now()
     })
+
+    # Agent-manager routing first
+    route_plan = route_request(message)
 
     # Semantic search
     results = router.search_dict(message, top_k=req.top_k)

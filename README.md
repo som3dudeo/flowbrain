@@ -107,8 +107,11 @@ Key settings:
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/status` | GET | Server health and workflow count |
-| `/search` | POST | Semantic search (returns matches) |
+| `/status` | GET | Server health, workflow count, and agent count |
+| `/agents` | GET | Registered agents and capabilities |
+| `/route` | POST | Route a request to the best agent |
+| `/manage` | POST | Manager decision + execution/delegation plan |
+| `/search` | POST | Semantic search (returns workflow matches) |
 | `/preview` | POST | Preview an automation (no side effects) |
 | `/auto` | POST | Find + optionally execute a workflow |
 | `/docs` | GET | Interactive API documentation |
