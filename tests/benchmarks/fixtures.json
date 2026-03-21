@@ -1,0 +1,62 @@
+[
+  {
+    "intent": "send slack message to #general",
+    "expected_nodes": ["Slack"],
+    "expected_category": "messaging",
+    "min_confidence": 0.50
+  },
+  {
+    "intent": "create a notion page for meeting notes",
+    "expected_nodes": ["Notion"],
+    "expected_category": "productivity",
+    "min_confidence": 0.50
+  },
+  {
+    "intent": "append row to google sheets",
+    "expected_nodes": ["Google Sheets"],
+    "expected_category": "productivity",
+    "min_confidence": 0.50
+  },
+  {
+    "intent": "send email to alice@company.com with subject Project Update",
+    "expected_nodes": ["Gmail"],
+    "expected_category": "email",
+    "min_confidence": 0.50
+  },
+  {
+    "intent": "create jira ticket for bug report",
+    "expected_nodes": ["Jira"],
+    "expected_category": "project_management",
+    "min_confidence": 0.45
+  },
+  {
+    "intent": "post deployment update to discord channel",
+    "expected_nodes": ["Discord"],
+    "expected_category": "messaging",
+    "min_confidence": 0.45
+  },
+  {
+    "intent": "summarize incoming email and send to telegram",
+    "expected_nodes": ["Gmail", "Telegram"],
+    "expected_category": "ai_pipeline",
+    "min_confidence": 0.40
+  },
+  {
+    "intent": "trigger webhook with JSON payload",
+    "expected_nodes": ["Webhook"],
+    "expected_category": "integration",
+    "min_confidence": 0.40
+  },
+  {
+    "intent": "sync airtable records to notion database",
+    "expected_nodes": ["Airtable", "Notion"],
+    "expected_category": "sync",
+    "min_confidence": 0.40
+  },
+  {
+    "intent": "weekly scheduled summary report via email",
+    "expected_nodes": ["Schedule Trigger"],
+    "expected_category": "reporting",
+    "min_confidence": 0.35
+  }
+]

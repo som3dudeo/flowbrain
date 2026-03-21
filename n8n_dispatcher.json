@@ -1,10 +1,10 @@
 {
-  "name": "⚡ Flow Finder Dispatcher",
+  "name": "⚡ FlowBrain Dispatcher",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "flow-finder-dispatch",
+        "path": "flowbrain",
         "responseMode": "responseNode",
         "options": {}
       },
@@ -13,7 +13,7 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [240, 300],
-      "notes": "This webhook receives requests from n8n Flow Finder. Copy the Production URL and set it as N8N_DEFAULT_WEBHOOK in your .env file."
+      "notes": "This webhook receives requests from FlowBrain. Copy the Production URL and set it as N8N_DEFAULT_WEBHOOK in your .env file."
     },
     {
       "parameters": {
@@ -101,7 +101,7 @@
     },
     {
       "parameters": {
-        "content": "## ⚡ Flow Finder Dispatcher\n\n**How to connect:**\n1. Activate this workflow\n2. Copy the Production URL from the **Receive Dispatch Request** node\n3. Add to your `.env` file:\n   `N8N_DEFAULT_WEBHOOK=<paste URL here>`\n4. Restart Flow Finder\n\n**What this does:**\nReceives a POST from Flow Finder with `{workflow_id, user_query}` and executes the target workflow by ID.\n\n**Payload format:**\n```json\n{\n  \"workflow_id\": \"1234\",\n  \"user_query\": \"original user request\"\n}\n```",
+        "content": "## ⚡ FlowBrain Dispatcher\n\n**How to connect:**\n1. Activate this workflow\n2. Copy the Production URL from the **Receive Dispatch Request** node\n3. Add to your `.env` file:\n   `N8N_DEFAULT_WEBHOOK=<paste URL here>`\n4. Restart FlowBrain\n\n**What this does:**\nReceives a POST from FlowBrain with `{workflow_id, user_query}` and executes the target workflow by ID.\n\n**Payload format:**\n```json\n{\n  \"workflow_id\": \"1234\",\n  \"user_query\": \"original user request\"\n}\n```",
         "height": 280,
         "width": 380
       },
@@ -161,9 +161,9 @@
     "callerPolicy": "workflowsFromSameOwner",
     "errorWorkflow": ""
   },
-  "tags": ["flow-finder", "dispatcher", "automation"],
+  "tags": ["flowbrain", "dispatcher", "automation"],
   "meta": {
-    "templateId": "n8n-flow-finder-dispatcher",
-    "instanceId": "flow-finder-v2"
+    "templateId": "flowbrain-dispatcher",
+    "instanceId": "flowbrain-v2"
   }
 }

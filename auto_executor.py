@@ -28,12 +28,14 @@ try:
 except ImportError:
     pass
 
-FLOW_FINDER_URL = os.getenv("FLOW_FINDER_URL", "http://localhost:8000")
+FLOWBRAIN_URL = os.getenv("FLOWBRAIN_URL", os.getenv("FLOW_FINDER_URL", "http://127.0.0.1:8001"))
 OLLAMA_URL      = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "llama3.2")
 N8N_BASE_URL    = os.getenv("N8N_BASE_URL", "http://localhost:5678")
 
-CONFIDENCE_THRESHOLD = float(os.getenv("AUTO_CONFIDENCE_THRESHOLD", "0.35"))
+# Confidence below this: don't auto-execute (raised from 0.35 to 0.85 for safety)
+CONFIDENCE_THRESHOLD = float(os.getenv("FLOWBRAIN_MIN_AUTOEXEC_CONFIDENCE",
+                             os.getenv("AUTO_CONFIDENCE_THRESHOLD", "0.85")))
 
 
 @dataclass
@@ -68,7 +70,7 @@ class ParameterExtractor:
 
         # Slack
         "slack_channel": r'#([a-zA-Z0-9_\-]+)',
-        "slack_at":      r'@([a-zA-Z0-9_\-]+)',
+        "slack_at":      r'(?<![\w.])@([a-zA-Z0-9_\-]+)\b',
 
         # URL
         "url":           r'https?://[^\s<>"{}|\\^`\[\]]+',
@@ -216,7 +218,7 @@ class AutoExecutor:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.post(
-                    f"{FLOW_FINDER_URL}/search",
+                    f"{FLOWBRAIN_URL}/search",
                     json={"query": intent, "top_k": 3}
                 )
                 r.raise_for_status()
@@ -224,7 +226,7 @@ class AutoExecutor:
         except Exception as e:
             return AutoResult(
                 success=False, intent=intent,
-                message=f"Could not reach Flow Finder at {FLOW_FINDER_URL}. Is it running? Error: {e}"
+                message=f"Could not reach FlowBrain at {FLOWBRAIN_URL}. Is it running? Error: {e}"
             )
 
         if not results:

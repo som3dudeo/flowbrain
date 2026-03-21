@@ -1,8 +1,8 @@
 # ─────────────────────────────────────────────────────────────────
-# n8n Flow Finder — Dockerfile
+# FlowBrain — Dockerfile
 #
-# Build:   docker build -t n8n-flow-finder .
-# Run:     docker run -p 8000:8000 -v $(pwd)/data:/app/data n8n-flow-finder
+# Build:   docker build -t flowbrain .
+# Run:     docker run -p 8001:8001 -v $(pwd)/data:/app/data flowbrain
 # ─────────────────────────────────────────────────────────────────
 
 FROM python:3.11-slim
@@ -20,19 +20,20 @@ RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
-COPY harvester.py indexer.py enricher.py router.py server.py run.py ./
+COPY harvester.py indexer.py enricher.py router.py server.py run.py reranker.py embedding.py bootstrap.sh ./
+COPY flowbrain/ flowbrain/
 COPY .env.example .env.example
 
 # Create data directories (will be overridden by volume mount)
 RUN mkdir -p data/workflows data/chroma_db
 
 # Port the server listens on
-EXPOSE 8000
+EXPOSE 8001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8000/status || exit 1
+  CMD curl -f http://localhost:8001/status || exit 1
 
 # Default: start the server (assumes data is volume-mounted and already set up)
-# Use `docker run ... python run.py --setup` for first-time setup
-CMD ["python", "server.py"]
+# Use `docker run ... python -m flowbrain install` for first-time setup
+CMD ["python", "-m", "flowbrain", "start"]

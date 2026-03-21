@@ -1,16 +1,16 @@
 # ─────────────────────────────────────────────────────────────────
-# n8n Flow Finder — Docker Compose
+# FlowBrain — Docker Compose
 #
 # Starts everything you need in one command:
 #   docker compose up -d
 #
 # Services:
 #   n8n           → http://localhost:5678   (workflow editor)
-#   flow-finder   → http://localhost:8000   (semantic search UI)
+#   flowbrain     → http://localhost:8001   (semantic search UI)
 #   ollama        → http://localhost:11434  (local LLM, optional)
 #
 # First-time setup:
-#   docker compose run --rm flow-finder python run.py --setup
+#   docker compose run --rm flowbrain python -m flowbrain install
 #
 # ─────────────────────────────────────────────────────────────────
 
@@ -42,18 +42,18 @@ services:
       retries: 5
       start_period: 30s
 
-  # ── n8n Flow Finder ───────────────────────────────────────────────────────
-  flow-finder:
+  # ── FlowBrain ────────────────────────────────────────────────────────────
+  flowbrain:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: flow-finder
+    container_name: flowbrain
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8001:8001"
     environment:
       - N8N_BASE_URL=http://n8n:5678
-      - PORT=8000
+      - FLOWBRAIN_PORT=8001
       # Add webhook URLs here or in a .env file:
       # - N8N_DEFAULT_WEBHOOK=http://n8n:5678/webhook/your-dispatcher
     env_file:
@@ -65,7 +65,7 @@ services:
       n8n:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/status"]
       interval: 30s
       timeout: 10s
       retries: 3

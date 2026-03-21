@@ -1,4 +1,4 @@
-# n8n Flow Finder — Python dependencies
+# FlowBrain — Python dependencies
 # Install with: pip install -r requirements.txt
 
 # Core: vector database (local, no server needed)
@@ -25,3 +25,6 @@ requests>=2.32.0
 
 # Environment variable loading
 python-dotenv>=1.0.0
+
+# ── Test / dev dependencies ──────────────────────────────────────────────────
+pytest>=8.0.0

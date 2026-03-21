@@ -17,16 +17,14 @@ import shutil
 from pathlib import Path
 
 import chromadb
-from chromadb.utils import embedding_functions
 from tqdm import tqdm
+
+from embedding import get_embedding_function, is_using_fallback, EMBEDDING_MODEL
 
 
 WORKFLOWS_DIR  = Path("./data/workflows")
 CHROMA_DB_PATH = Path("./data/chroma_db")
 COLLECTION_NAME = "n8n_workflows"
-
-# The embedding model — runs locally, no API key needed, ~60 MB download on first run
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 
 def build_index(rebuild: bool = False) -> int:
@@ -49,9 +47,10 @@ def build_index(rebuild: bool = False) -> int:
     print(f"\n🧠 Loading embedding model: {EMBEDDING_MODEL}")
     print("   (First run downloads ~60 MB — subsequent runs are instant)\n")
 
-    embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name=EMBEDDING_MODEL
-    )
+    embed_fn = get_embedding_function()
+    if is_using_fallback():
+        print("   ⚠  Using offline fallback embeddings (reduced quality).")
+        print("      Run `flowbrain reindex` with internet access to upgrade.\n")
 
     client     = chromadb.PersistentClient(path=str(CHROMA_DB_PATH))
     collection = client.get_or_create_collection(
@@ -131,19 +130,87 @@ def _build_document(name: str, desc: str, nodes: str, cats: str, tags: str) -> s
     """
     Combine all workflow metadata into a single searchable text string.
     The quality of this string directly determines search accuracy.
+
+    Strategy: repeat the name (most important signal), expand node names into
+    natural-language phrases so the embedding captures intent, and include all
+    available metadata.  The resulting document reads like a mini-article so the
+    sentence-transformer produces a richer, more query-aligned embedding.
     """
     parts = []
+
+    # Name appears twice: once as a title, once inside a sentence.  This
+    # gives the title terms higher weight in the embedding.
     if name:
-        parts.append(f"Workflow: {name}")
+        parts.append(name)
+        parts.append(f"This automation workflow is called \"{name}\".")
+
     if desc:
-        parts.append(f"Description: {desc}")
+        parts.append(desc)
+
     if nodes:
-        parts.append(f"Integrations used: {nodes}")
+        # Turn comma-separated nodes into an intent-style sentence.
+        node_list = [n.strip() for n in nodes.split(",") if n.strip()]
+        expanded = _expand_node_names(node_list)
+        parts.append(f"Services and integrations used: {', '.join(expanded)}.")
+        # Also add plain node list for exact-match queries
+        parts.append(f"Nodes: {nodes}")
+
     if cats:
         parts.append(f"Categories: {cats}")
+
     if tags:
         parts.append(f"Tags: {tags}")
+
     return "\n".join(parts)
+
+
+# Map common n8n node type names to richer natural-language synonyms so the
+# embedding captures user intent (people say "send email" not "Gmail node").
+_NODE_SYNONYMS: dict[str, str] = {
+    "Gmail":             "Gmail email send receive",
+    "Slack":             "Slack message channel notification",
+    "Discord":           "Discord message bot notification",
+    "Telegram":          "Telegram message bot chat",
+    "Notion":            "Notion page database note",
+    "Airtable":          "Airtable base record spreadsheet",
+    "Google Sheets":     "Google Sheets spreadsheet row cell",
+    "Google Drive":      "Google Drive file upload download",
+    "Dropbox":           "Dropbox file cloud storage",
+    "Trello":            "Trello card board task",
+    "Jira":              "Jira issue ticket project",
+    "Linear":            "Linear issue task project",
+    "GitHub":            "GitHub repository issue pull request",
+    "Twitter":           "Twitter tweet post social media",
+    "WordPress":         "WordPress blog post publish",
+    "HubSpot":           "HubSpot CRM contact deal",
+    "Salesforce":        "Salesforce CRM lead opportunity",
+    "Stripe":            "Stripe payment invoice charge",
+    "Twilio":            "Twilio SMS text message phone",
+    "SendGrid":          "SendGrid email send",
+    "Mailchimp":         "Mailchimp email campaign newsletter",
+    "OpenAI":            "OpenAI GPT AI language model",
+    "HTTP Request":      "HTTP API request call webhook",
+    "Webhook":           "Webhook trigger HTTP callback",
+    "Cron":              "Cron schedule timer recurring",
+    "RSS":               "RSS feed news article",
+    "MySQL":             "MySQL database SQL query",
+    "Postgres":          "PostgreSQL database SQL query",
+    "MongoDB":           "MongoDB database document NoSQL",
+    "Redis":             "Redis cache key-value store",
+    "S3":                "AWS S3 file storage bucket",
+}
+
+
+def _expand_node_names(nodes: list[str]) -> list[str]:
+    """Return node names enriched with synonyms where known."""
+    out = []
+    for node in nodes:
+        syn = _NODE_SYNONYMS.get(node)
+        if syn:
+            out.append(syn)
+        else:
+            out.append(node)
+    return out
 
 
 def get_index_stats() -> dict:

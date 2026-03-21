@@ -1,39 +1,55 @@
 """
-server.py — FastAPI server with full chat UI and OpenClaw API
+server.py — FlowBrain FastAPI server with chat UI and automation API
 
 Endpoints:
   GET  /           → Full chat web interface
   POST /chat       → Main endpoint (OpenClaw + web UI use this)
   POST /search     → Raw semantic search (returns JSON)
-  POST /execute    → Trigger a workflow via n8n webhook
+  POST /preview    → Preview an automation (no side effects)
+  POST /auto       → Find + optionally execute a workflow
+  POST /execute    → Trigger a specific workflow via n8n webhook
   GET  /status     → Health check + index stats
   GET  /docs       → Auto-generated API documentation
 
-Run: python server.py
-     python run.py         (recommended — handles setup automatically)
+Run: python -m flowbrain start   (recommended)
+     python server.py             (direct)
 """
 
 import os
 import uuid
 import json
+import time
 import httpx
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from collections import defaultdict
+
+# ── Load dotenv FIRST ────────────────────────────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
+from flowbrain import __version__
 from router import get_router
 from indexer import get_index_stats
 from auto_executor import get_executor, AutoResult
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# ── Config (dotenv already loaded) ───────────────────────────────────────────
 
-PORT         = int(os.getenv("PORT", 8000))
+PORT         = int(os.getenv("FLOWBRAIN_PORT", os.getenv("PORT", 8001)))
+HOST         = os.getenv("FLOWBRAIN_HOST", os.getenv("HOST", "127.0.0.1"))
 N8N_BASE_URL = os.getenv("N8N_BASE_URL", "http://localhost:5678")
+
+# Safety thresholds
+MIN_AUTOEXEC_CONFIDENCE = float(os.getenv("FLOWBRAIN_MIN_AUTOEXEC_CONFIDENCE", "0.85"))
+MIN_PREVIEW_CONFIDENCE  = float(os.getenv("FLOWBRAIN_MIN_PREVIEW_CONFIDENCE", "0.40"))
 
 # In-memory conversation history (keyed by session_id)
 # For production, swap with Redis or a database
@@ -50,20 +66,20 @@ def get_webhook_url(workflow_id: str) -> str | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("\n🚀 n8n Flow Finder starting...")
+    print("\n🚀 FlowBrain starting...")
     router = get_router()
     if router.is_ready:
         print(f"   ✅ {router.workflow_count:,} workflows indexed and ready")
     else:
-        print("   ⚠️  No index found. Run `python run.py --setup` first.")
-    print(f"   🌐 http://localhost:{PORT}\n")
+        print("   ⚠️  No index found. Run `flowbrain reindex` first.")
+    print(f"   🌐 http://{HOST}:{PORT}\n")
     yield
 
 
 app = FastAPI(
-    title="n8n Flow Finder",
-    description="Semantic workflow search and execution engine",
-    version="2.0.0",
+    title="FlowBrain",
+    description="AI-native automation operating system — semantic workflow search and execution",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -87,14 +103,16 @@ class ExecuteRequest(BaseModel):
 
 class AutoRequest(BaseModel):
     """
-    Fully autonomous execution — provide the intent and the system
-    finds, extracts parameters, and executes the best workflow automatically.
-    This is the endpoint OpenClaw calls.
+    Automation endpoint — provide a plain-English intent and the system
+    finds the best workflow, extracts parameters, and optionally executes it.
+
+    auto_execute defaults to False (preview-only). Set to True to actually
+    fire the webhook, subject to confidence and risk gating.
     """
     intent:     str
     params:     dict = {}           # optional override params
     session_id: str | None = None
-    auto_execute: bool = True       # set False to preview without executing
+    auto_execute: bool = False      # safe default: preview only
 
 
 # ── API Routes ────────────────────────────────────────────────────────────────
@@ -125,7 +143,7 @@ async def chat(req: ChatRequest):
     router = get_router()
     if not router.is_ready:
         return {
-            "reply": "⚠️ The workflow index is not built yet. Run `python run.py --setup` to get started.",
+            "reply": "⚠️ The workflow index is not built yet. Run `flowbrain reindex` to get started.",
             "workflows": [],
             "session_id": req.session_id or str(uuid.uuid4()),
         }
@@ -190,7 +208,7 @@ async def search(req: SearchRequest):
     """Raw semantic search — returns workflow matches as JSON."""
     router = get_router()
     if not router.is_ready:
-        raise HTTPException(status_code=503, detail="Index not built. Run `python run.py --setup`")
+        raise HTTPException(status_code=503, detail="Index not built. Run `flowbrain reindex`")
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
@@ -234,35 +252,123 @@ async def execute(req: ExecuteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class PreviewRequest(BaseModel):
+    """Preview an automation — no side effects."""
+    intent: str
+    session_id: str | None = None
+
+
+@app.post("/preview")
+async def preview(req: PreviewRequest):
+    """
+    Preview an automation without executing it.
+
+    Shows: selected workflow, extracted params, confidence, risk level,
+    affected systems, and whether auto-execution would be allowed.
+    """
+    router = get_router()
+    if not router.is_ready:
+        return {"error": "Index not built", "intent": req.intent}
+
+    if not req.intent.strip():
+        raise HTTPException(status_code=400, detail="Intent cannot be empty.")
+
+    # Search for best workflow
+    results = router.search(req.intent.strip(), top_k=3)
+
+    if not results:
+        return {
+            "intent": req.intent,
+            "workflow_name": None,
+            "confidence": 0.0,
+            "confidence_pct": "0%",
+            "risk_level": "unknown",
+            "message": "No matching workflow found.",
+        }
+
+    best = results[0]
+    executor = get_executor()
+    params = executor.extractor.extract(req.intent, best.nodes)
+
+    # Risk classification / preview policy
+    from flowbrain.policies.risk import classify_risk, get_affected_systems
+    from flowbrain.policies.preview import build_preview
+
+    risk = classify_risk(best.nodes, best.name)
+    systems = get_affected_systems(best.nodes)
+    preview = build_preview(
+        intent=req.intent,
+        workflow_id=best.workflow_id,
+        workflow_name=best.name,
+        confidence=best.confidence,
+        nodes=best.nodes,
+        params=params,
+        auto_execute_requested=False,
+        alternatives=[
+            {"name": r.name, "confidence": r.confidence, "confidence_pct": f"{int(r.confidence*100)}%"}
+            for r in results[1:3]
+        ],
+        source_url=best.source_url,
+    )
+    would_auto = preview.would_auto_execute
+    blocked = preview.execution_blocked
+    block_reason = preview.block_reason
+
+    alternatives = preview.alternatives
+
+    # Record preview in state
+    try:
+        from flowbrain.state.db import record_preview, new_preview_id
+        record_preview(
+            preview_id=new_preview_id(),
+            intent=req.intent,
+            workflow_id=best.workflow_id,
+            workflow_name=best.name,
+            confidence=best.confidence,
+            params=params,
+            risk_level=risk.value,
+            systems_affected=systems,
+            blocked=blocked,
+            block_reason=block_reason,
+        )
+    except Exception:
+        pass
+
+    return {
+        "intent": req.intent,
+        "workflow_id": best.workflow_id,
+        "workflow_name": best.name,
+        "confidence": best.confidence,
+        "confidence_pct": f"{int(best.confidence*100)}%",
+        "risk_level": risk.value,
+        "systems_affected": systems,
+        "params_extracted": params,
+        "would_auto_execute": would_auto,
+        "execution_blocked": blocked,
+        "block_reason": block_reason,
+        "alternatives": alternatives,
+        "source_url": best.source_url,
+        "action_summary": f"Will interact with: {', '.join(systems)}" if systems else "Internal workflow",
+    }
+
+
 @app.post("/auto")
 async def auto(req: AutoRequest):
     """
-    ── The core OpenClaw endpoint ──
+    ── The core automation endpoint ──
 
-    Fully autonomous: takes a plain-English intent, finds the best n8n workflow,
-    extracts all required parameters, and executes it — no human involvement needed.
+    Takes a plain-English intent, finds the best n8n workflow,
+    extracts parameters, and optionally executes it.
 
-    This is what OpenClaw calls when the user says "do X for me".
-
-    Example:
-        POST /auto
-        {"intent": "Send an email to alice@example.com saying the meeting is at 3pm tomorrow"}
-
-    Returns:
-        {
-          "success": true,
-          "workflow_name": "Send Email via Gmail",
-          "confidence": 0.87,
-          "params_extracted": {"to_email": "alice@example.com", "message": "..."},
-          "message": "✅ Email sent successfully",
-          "needs_webhook": false
-        }
+    auto_execute=false (DEFAULT): search + extract + preview. No side effects.
+    auto_execute=true: search + extract + confidence/risk check + execute.
     """
+    t0 = time.time()
     router = get_router()
     if not router.is_ready:
         return {
             "success": False,
-            "message": "Workflow index not built. Run `python run.py --setup` first.",
+            "message": "Workflow index not built. Run `flowbrain reindex` first.",
             "intent": req.intent,
         }
 
@@ -270,38 +376,155 @@ async def auto(req: AutoRequest):
         raise HTTPException(status_code=400, detail="Intent cannot be empty.")
 
     session_id = req.session_id or str(uuid.uuid4())
+    run_id = f"run_{uuid.uuid4().hex[:12]}"
 
-    # Log to conversation history
     _conversations[session_id].append({
         "role": "user", "content": req.intent, "time": _now(), "mode": "auto"
     })
 
-    executor = get_executor()
-    result: AutoResult = await executor.run(req.intent, req.params)
+    # ── Step 1: Search (no side effects) ──
+    results = router.search(req.intent.strip(), top_k=3)
+    if not results:
+        msg = "No matching automation found. Try rephrasing or use more specific service names."
+        _record_and_log(run_id, req, session_id, msg=msg, t0=t0)
+        return {"success": False, "intent": req.intent, "message": msg,
+                "session_id": session_id, "run_id": run_id, "auto_executed": False}
 
-    # Log result to conversation history
+    best = results[0]
+    wf_nodes = best.nodes  # real node metadata from ChromaDB
+
+    # ── Step 2: Extract params (no side effects) ──
+    executor = get_executor()
+    params = executor.extractor.extract(req.intent, wf_nodes)
+    params.update(req.params)  # user-provided params override
+
+    # ── Step 3: Risk + confidence classification (no side effects) ──
+    from flowbrain.policies.risk import classify_risk, get_affected_systems
+    from flowbrain.policies.confidence import should_auto_execute as _should_auto
+
+    risk = classify_risk(wf_nodes, best.name)
+    systems = get_affected_systems(wf_nodes)
+
+    # ── Step 4: Gate decision ──
+    execution_allowed = False
+    block_reason = ""
+
+    if not req.auto_execute:
+        # User explicitly asked for preview only — never execute
+        block_reason = "auto_execute=false (preview mode)"
+    elif best.confidence < MIN_AUTOEXEC_CONFIDENCE:
+        block_reason = (f"Confidence {int(best.confidence*100)}% is below "
+                        f"auto-execution threshold ({int(MIN_AUTOEXEC_CONFIDENCE*100)}%)")
+    elif not _should_auto(best.confidence, risk.value, auto_execute_requested=True):
+        block_reason = f"Blocked by safety policy (risk={risk.value}, confidence={int(best.confidence*100)}%)"
+    else:
+        execution_allowed = True
+
+    # ── Step 5: Execute ONLY if allowed ──
+    exec_result = {}
+    actually_executed = False
+    webhook_url = get_webhook_url(best.workflow_id)
+
+    if execution_allowed:
+        if not webhook_url:
+            block_reason = "No webhook configured"
+        else:
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(webhook_url, json=params)
+                    resp.raise_for_status()
+                    exec_result = {"status_code": resp.status_code, "response": resp.text[:2000]}
+                    actually_executed = True
+            except httpx.TimeoutException:
+                exec_result = {"error": "Webhook timed out (30s)"}
+            except httpx.HTTPStatusError as e:
+                exec_result = {"error": f"Webhook returned HTTP {e.response.status_code}"}
+            except Exception as e:
+                exec_result = {"error": str(e)}
+
+    # ── Build response message ──
+    success = actually_executed and "error" not in exec_result
+    needs_webhook = not webhook_url
+
+    if actually_executed and success:
+        message = (
+            f"✅ Executed: **{best.name}** ({int(best.confidence*100)}% confidence)\n"
+            f"Risk: {risk.value} | Systems: {', '.join(systems) or 'none'}\n"
+            f"Response: {exec_result.get('response', 'Done.')}"
+        )
+    elif actually_executed and not success:
+        message = f"❌ Execution failed: {exec_result.get('error', 'Unknown error')}"
+    elif needs_webhook:
+        message = (
+            f"Found: **{best.name}** ({int(best.confidence*100)}% confidence)\n"
+            f"⚠️ No webhook configured. Add N8N_DEFAULT_WEBHOOK to .env."
+        )
+    elif block_reason:
+        message = (
+            f"Found: **{best.name}** ({int(best.confidence*100)}% confidence)\n"
+            f"Risk: {risk.value} | Systems: {', '.join(systems) or 'none'}\n"
+            f"⏸ Not executed: {block_reason}"
+        )
+    else:
+        message = f"Found: **{best.name}** ({int(best.confidence*100)}% confidence)"
+
+    duration_ms = int((time.time() - t0) * 1000)
+
+    # Record in durable state
+    try:
+        from flowbrain.state.db import record_run
+        record_run(
+            run_id=run_id, intent=req.intent,
+            workflow_id=best.workflow_id, workflow_name=best.name,
+            confidence=best.confidence, params=params,
+            auto_execute=req.auto_execute, success=success,
+            execution_result=exec_result,
+            error_message=block_reason if not success else "",
+            needs_webhook=needs_webhook, source_url=best.source_url,
+            duration_ms=duration_ms, risk_level=risk.value,
+        )
+    except Exception:
+        pass
+
     _conversations[session_id].append({
-        "role": "assistant",
-        "content": result.message,
-        "workflow_name": result.workflow_name,
-        "success": result.success,
-        "time": _now(),
+        "role": "assistant", "content": message,
+        "workflow_name": best.name, "success": success, "time": _now(),
     })
 
     return {
-        "success":          result.success,
-        "intent":           result.intent,
-        "workflow_id":      result.workflow_id,
-        "workflow_name":    result.workflow_name,
-        "confidence":       result.confidence,
-        "confidence_pct":   f"{int(result.confidence * 100)}%",
-        "params_extracted": result.params,
-        "execution_result": result.execution_result,
-        "message":          result.message,
-        "needs_webhook":    result.needs_webhook,
-        "source_url":       result.source_url,
+        "success":          success,
+        "run_id":           run_id,
+        "intent":           req.intent,
+        "workflow_id":      best.workflow_id,
+        "workflow_name":    best.name,
+        "confidence":       best.confidence,
+        "confidence_pct":   f"{int(best.confidence * 100)}%",
+        "risk_level":       risk.value,
+        "systems_affected": systems,
+        "params_extracted": params,
+        "execution_result": exec_result,
+        "message":          message,
+        "needs_webhook":    needs_webhook,
+        "source_url":       best.source_url,
         "session_id":       session_id,
+        "auto_executed":    actually_executed,
+        "block_reason":     block_reason,
+        "duration_ms":      duration_ms,
     }
+
+
+def _record_and_log(run_id, req, session_id, msg, t0):
+    """Helper to record a failed/empty run."""
+    duration_ms = int((time.time() - t0) * 1000)
+    try:
+        from flowbrain.state.db import record_run
+        record_run(run_id=run_id, intent=req.intent, success=False,
+                   error_message=msg, duration_ms=duration_ms, auto_execute=req.auto_execute)
+    except Exception:
+        pass
+    _conversations.setdefault(session_id, []).append({
+        "role": "assistant", "content": msg, "success": False, "time": _now(),
+    })
 
 
 @app.get("/history/{session_id}")
@@ -344,7 +567,7 @@ _HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>n8n Flow Finder</title>
+<title>FlowBrain</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -552,8 +775,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   <div class="logo">
     <div class="logo-icon">⚡</div>
     <div class="logo-text">
-      <h1>n8n Flow Finder</h1>
-      <p>Semantic workflow search &amp; execution</p>
+      <h1>FlowBrain</h1>
+      <p>AI-native automation operating system</p>
     </div>
   </div>
   <div class="header-right">
@@ -582,8 +805,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       <!-- Welcome screen shown on first load -->
       <div class="welcome" id="welcome">
         <div class="welcome-icon">🔍</div>
-        <h2>Find your n8n workflow</h2>
-        <p>Describe what you want to automate in plain English. I'll search through thousands of n8n workflows and find the best match for you.</p>
+        <h2>What do you want to automate?</h2>
+        <p>Describe what you want to do in plain English. FlowBrain will find the best n8n workflow, extract parameters, and execute it safely.</p>
         <div class="examples-grid">
           <div class="ex-chip" onclick="sendExample(this)">Notify Slack when Typeform submitted</div>
           <div class="ex-chip" onclick="sendExample(this)">Save Gmail attachments to Google Drive</div>
@@ -901,9 +1124,5 @@ function md(s) {
 
 if __name__ == "__main__":
     import uvicorn
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass
-    uvicorn.run("server:app", host="0.0.0.0", port=PORT, reload=False, log_level="warning")
+    # dotenv already loaded at top of file
+    uvicorn.run("server:app", host=HOST, port=PORT, reload=False, log_level="warning")

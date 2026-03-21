@@ -1,163 +1,83 @@
 #!/usr/bin/env bash
-# ⚡ FlowBrain — OpenClaw Automation Skill Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/som3dudeo/flowbrain/main/install.sh | bash
+# ─────────────────────────────────────────────────────────────────────────────
+#  FlowBrain — Remote one-command installer (clone + bootstrap)
+#
+#  Usage (from anywhere):
+#    curl -fsSL https://raw.githubusercontent.com/som3dudeo/flowbrain/main/install.sh | bash
+#
+#  What it does:
+#    1. Checks prerequisites (Python 3.10+, git)
+#    2. Clones (or updates) the repo to ~/Documents/flowbrain
+#    3. Delegates to bootstrap.sh for venv, deps, index, and doctor
+#
+#  This is the "from zero" path.  If you already have the repo cloned, run
+#  `bash bootstrap.sh` directly instead.
+# ─────────────────────────────────────────────────────────────────────────────
 
-set -e
+set -euo pipefail
 
 REPO="https://github.com/som3dudeo/flowbrain.git"
 INSTALL_DIR="$HOME/Documents/flowbrain"
-OPENCLAW_SKILLS_DIR="/opt/homebrew/lib/node_modules/openclaw/skills/n8n-flows"
+
+BOLD='\033[1m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+RED='\033[0;31m'
+NC='\033[0m'
 
 echo ""
-echo "⚡ FlowBrain — OpenClaw Automation Skill"
-echo "========================================="
-echo ""
+echo -e "${BOLD}FlowBrain — One-Command Installer${NC}"
+echo "────────────────────────────────────────────────────"
 
-# ── Check requirements ──────────────────────────────────────────────────────
+# ── Prerequisites ─────────────────────────────────────────────────────────────
 check_cmd() {
     if ! command -v "$1" &>/dev/null; then
-        echo "❌ Required: $1 is not installed."
-        echo "   $2"
+        echo -e "  ${RED}✗${NC}  Required: $1 is not installed."
+        echo "     $2"
         exit 1
     fi
 }
 
-check_cmd python3   "Install Python 3.10+ from https://python.org"
 check_cmd git       "Install git from https://git-scm.com"
-check_cmd pip3      "Install pip: python3 -m ensurepip"
 
-PYTHON_VERSION=$(python3 -c 'import sys; print(sys.version_info.minor)')
-if [ "$PYTHON_VERSION" -lt 10 ]; then
-    echo "❌ Python 3.10+ required (found 3.$PYTHON_VERSION)"
+# Find a Python 3.10+ interpreter
+PYTHON=""
+for candidate in python3 python; do
+    if command -v "$candidate" &>/dev/null; then
+        if "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+            PYTHON="$candidate"
+            break
+        fi
+    fi
+done
+
+if [ -z "$PYTHON" ]; then
+    echo -e "  ${RED}✗${NC}  Python 3.10+ is required but not found."
+    echo "     Download from https://www.python.org/downloads/"
     exit 1
 fi
 
-echo "✓ Python $(python3 --version)"
-echo "✓ git $(git --version | awk '{print $3}')"
-echo ""
+PY_VERSION=$("$PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')
+echo -e "  ${GREEN}✓${NC}  Python ${PY_VERSION}"
+echo -e "  ${GREEN}✓${NC}  git $(git --version | awk '{print $3}')"
 
-# ── Clone or update ──────────────────────────────────────────────────────────
+# ── Clone or update ───────────────────────────────────────────────────────────
+echo ""
 if [ -d "$INSTALL_DIR/.git" ]; then
-    echo "📦 Updating existing installation at $INSTALL_DIR..."
+    echo -e "  ${CYAN}Updating${NC} existing installation at $INSTALL_DIR..."
     cd "$INSTALL_DIR" && git pull --ff-only
 else
-    echo "📦 Cloning to $INSTALL_DIR..."
+    echo -e "  ${CYAN}Cloning${NC} FlowBrain to $INSTALL_DIR..."
     git clone "$REPO" "$INSTALL_DIR"
 fi
 
 cd "$INSTALL_DIR"
 
-# ── Virtual environment ──────────────────────────────────────────────────────
-if [ ! -d "venv" ]; then
-    echo "🐍 Creating Python virtual environment..."
-    python3 -m venv venv
-fi
-
-echo "📚 Installing Python dependencies (this may take a few minutes)..."
-source venv/bin/activate
-pip install -q --upgrade pip
-pip install -q -r requirements.txt
-echo "✓ Dependencies installed"
-echo ""
-
-# ── Install OpenClaw skill ────────────────────────────────────────────────────
-if command -v openclaw &>/dev/null; then
-    echo "🦞 Installing n8n-flows skill into OpenClaw..."
-
-    # Try the standard bundled skills location first
-    POSSIBLE_DIRS=(
-        "/opt/homebrew/lib/node_modules/openclaw/skills/n8n-flows"
-        "/usr/local/lib/node_modules/openclaw/skills/n8n-flows"
-        "$(npm root -g 2>/dev/null)/openclaw/skills/n8n-flows"
-    )
-
-    SKILL_INSTALLED=false
-    for dir in "${POSSIBLE_DIRS[@]}"; do
-        parent=$(dirname "$dir")
-        if [ -d "$parent" ]; then
-            mkdir -p "$dir"
-            cp "$INSTALL_DIR/SKILL.md" "$dir/SKILL.md"
-            SKILL_INSTALLED=true
-            echo "✓ Skill installed at $dir"
-            break
-        fi
-    done
-
-    if [ "$SKILL_INSTALLED" = false ]; then
-        echo "⚠️  Could not find OpenClaw skills directory."
-        echo "   Manual install: copy SKILL.md to your OpenClaw skills folder."
-    fi
-
-    # Verify
-    if openclaw skills list 2>/dev/null | grep -q "n8n-flows"; then
-        echo "✓ n8n-flows skill is ready in OpenClaw"
-    fi
+# ── Delegate to bootstrap.sh ─────────────────────────────────────────────────
+if [ -f "bootstrap.sh" ]; then
+    exec bash bootstrap.sh
 else
-    echo "ℹ️  OpenClaw not found — skipping skill registration."
-    echo "   Install OpenClaw: https://openclaw.ai"
+    echo -e "  ${RED}✗${NC}  bootstrap.sh not found in repo. Something went wrong with the clone."
+    exit 1
 fi
-
-echo ""
-
-# ── Create .env if missing ────────────────────────────────────────────────────
-if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-    cp .env.example .env
-    echo "📝 Created .env from .env.example (edit to add n8n webhook URLs)"
-fi
-
-# ── Start the server ──────────────────────────────────────────────────────────
-echo "🚀 Starting n8n Flow Finder server..."
-echo "   (Downloading and indexing workflows in background — may take 2-3 min)"
-echo ""
-
-# Kill any existing instance on port 8001
-lsof -ti:8001 | xargs kill -9 2>/dev/null || true
-
-nohup bash -c "cd '$INSTALL_DIR' && source venv/bin/activate && python3 run.py --serve 2>&1" \
-    > "$INSTALL_DIR/server.log" 2>&1 &
-
-SERVER_PID=$!
-echo "   Server PID: $SERVER_PID (log: $INSTALL_DIR/server.log)"
-echo ""
-
-# Wait for server to be ready
-echo -n "   Waiting for server"
-for i in $(seq 1 30); do
-    if curl -sf http://localhost:8001/status &>/dev/null; then
-        echo ""
-        echo "✓ Server is up at http://localhost:8001"
-        break
-    fi
-    echo -n "."
-    sleep 2
-done
-
-echo ""
-
-# ── Final check ──────────────────────────────────────────────────────────────
-STATUS=$(curl -sf http://localhost:8001/status 2>/dev/null || echo '{}')
-INDEXED=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('workflows_indexed', 0))" 2>/dev/null || echo "0")
-
-echo "================================================"
-echo "✅ Installation complete!"
-echo ""
-echo "   Workflows indexed: $INDEXED"
-echo "   Server:           http://localhost:8001"
-echo "   Chat UI:          http://localhost:8001"
-echo ""
-
-if command -v openclaw &>/dev/null; then
-    echo "   OpenClaw skill:   ⚡ n8n-flows (✓ ready)"
-    echo ""
-    echo "   👉 Start a conversation with OpenClaw and say:"
-    echo "      'Send an email to me@example.com saying hello'"
-    echo "      'Post to Slack #general that the build is green'"
-    echo "      'Create a Notion page for today's standup'"
-fi
-
-echo ""
-echo "   📖 Next step: connect n8n for live execution"
-echo "      1. In your n8n instance, create a Webhook node at path 'flowbrain' (POST, 'When Last Node Finishes') and activate it"
-echo "      2. Create $INSTALL_DIR/.env: N8N_DEFAULT_WEBHOOK=http://localhost:5678/webhook/flowbrain FLOW_FINDER_URL=http://127.0.0.1:8001 PORT=8001"
-echo "      3. Restart: cd $INSTALL_DIR && source venv/bin/activate && python3 run.py --serve"
-echo ""

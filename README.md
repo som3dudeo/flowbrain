@@ -1,159 +1,142 @@
-# ⚡ FlowBrain — OpenClaw Automation Skill
+# FlowBrain — AI-Native Automation Operating System
 
-Turn your OpenClaw AI agent into an automation powerhouse. This skill gives OpenClaw access to **8,000+ n8n community workflows** — send emails, post Slack messages, create Notion pages, trigger CI/CD, run AI pipelines, and more — all via natural language.
+Turn natural language into real automations. FlowBrain finds the right n8n workflow, extracts parameters, previews the action safely, and executes it — all from a single command.
 
-> **"Send the deploy notification to #engineering on Slack"**
-> OpenClaw finds the right workflow, extracts the parameters, fires the webhook. Done.
+## Quick Start
 
----
+Requires **Python 3.10+** and **git**.
 
-## How It Works
-
+```bash
+# One command — from zero to ready:
+git clone https://github.com/som3dudeo/flowbrain.git ~/Documents/flowbrain
+cd ~/Documents/flowbrain && bash bootstrap.sh
 ```
-You → OpenClaw → n8n Flow Finder (semantic search) → n8n workflow → Result
-```
 
-1. **Semantic router** — ChromaDB + sentence-transformers finds the best workflow match from 8,000+ templates
-2. **Auto parameter extraction** — regex + optional Ollama LLM pulls emails, channels, dates, content from plain English
-3. **Webhook execution** — fires your connected n8n workflows automatically
-4. **OpenClaw skill** — the `n8n-flows` skill teaches OpenClaw when and how to use everything
-
----
-
-## One-Line Install
+Or use the remote installer (clones for you):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/som3dudeo/flowbrain/main/install.sh | bash
 ```
 
-This will:
-- Clone the repo to `~/Documents/n8n-flow-finder`
-- Create a Python virtual environment and install all dependencies
-- Download and index 450+ workflow templates (runs in background)
-- Install the `n8n-flows` skill into your OpenClaw installation
-- Start the Flow Finder server on port 8001
-
-**Requirements:** Python 3.10+, OpenClaw, pip
-
----
-
-## Manual Setup
+`bootstrap.sh` checks Python, creates a venv, installs all dependencies, downloads workflows, builds the search index, and runs a health check. When it finishes:
 
 ```bash
-git clone https://github.com/som3dudeo/flowbrain.git ~/Documents/flowbrain
-cd ~/Documents/n8n-flow-finder
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python3 run.py          # downloads workflows, indexes, starts server
+source venv/bin/activate
+python -m flowbrain start
 ```
 
----
+If you already have a venv and dependencies installed, you can skip the bootstrap and run `python -m flowbrain install` directly.
 
-## Connecting n8n Workflows
+## CLI Commands
 
-The skill finds and matches workflows automatically. To actually **execute** them, you need n8n running with the FlowBrain dispatcher webhook.
+All commands are run via `python -m flowbrain <command>`.
 
-### Option A — Docker (recommended)
-
-```bash
-docker compose up -d
+```
+flowbrain install    One-command setup (deps + download + index + doctor)
+flowbrain doctor     Check system health (config, ports, n8n, index)
+flowbrain start      Start the FlowBrain server on http://127.0.0.1:8001
+flowbrain status     Show server status and workflow count
+flowbrain search     Search for matching workflows
+flowbrain preview    Preview an automation without executing
+flowbrain run        Execute an automation (with safety gating)
+flowbrain reindex    Rebuild search index (improves quality after upgrades)
+flowbrain logs       Show recent run history
 ```
 
-This starts n8n pre-configured with the dispatcher webhook at `http://localhost:5678/webhook/flowbrain`. The `.env` is set automatically.
+## How It Works
 
-### Option B — Existing n8n instance
+```
+You → FlowBrain CLI/API
+  → Query Expansion (service-name synonyms)
+  → Semantic Search (ChromaDB + sentence-transformers)
+  → Hybrid Re-ranking (0.65× semantic + 0.35× keyword overlap)
+  → Parameter Extraction → Risk Assessment
+  → Preview/Execute → n8n Webhook → Done
+```
 
-1. In your n8n instance, create a workflow called **⚡ FlowBrain Dispatcher** with:
-   - A **Webhook** node at path `flowbrain` (POST, response mode: "When Last Node Finishes")
-   - Activate the workflow
-2. Create `~/Documents/n8n-flow-finder/.env`:
+1. **Hybrid retrieval** combines embedding search with keyword scoring for better broad-query results
+2. **Query expansion** maps vague terms like "email" to specific services like "Gmail"
+3. **Parameter extraction** pulls emails, channels, dates from your intent
+4. **Risk classification** categorizes the action (LOW/MEDIUM/HIGH) using real node metadata
+5. **Confidence gating** prevents low-confidence actions from executing
+6. **Preview mode** shows exactly what will happen before it does
+7. **Webhook dispatch** fires the matched n8n workflow
+
+## Safety Model
+
+FlowBrain defaults to **safe behavior**:
+
+- Server binds to `127.0.0.1` (localhost only) by default
+- Auto-execution requires **85%+ confidence** (configurable)
+- **HIGH risk** actions (email, Slack, social media) never auto-execute
+- **Preview mode** is the default — you see what would happen first
+- All runs are recorded in SQLite for auditability
+
+## Connecting n8n
+
+FlowBrain needs n8n to actually execute automations.
+
+1. Start n8n (e.g., `docker compose up -d` or your existing instance)
+2. Create a workflow with a **Webhook** node at path `flowbrain` (POST, "When Last Node Finishes")
+3. Activate the workflow
+4. Set in your `.env`:
    ```
    N8N_BASE_URL=http://localhost:5678
    N8N_DEFAULT_WEBHOOK=http://localhost:5678/webhook/flowbrain
-   FLOW_FINDER_URL=http://127.0.0.1:8001
-   PORT=8001
    ```
-3. Restart the FlowBrain server.
+5. Restart FlowBrain and run `python -m flowbrain doctor` to verify
 
-> **Note:** If n8n is running in Docker alongside another service on port 8000, set `PORT=8001` in your `.env` to avoid conflicts. The install script now defaults to 8001.
+## Configuration
 
-Without n8n connected, the skill still finds the right workflow and tells you exactly which one to set up.
+Copy `.env.example` to `.env` and customize:
 
----
+```bash
+cp .env.example .env
+```
 
-## What You Can Automate
+Key settings:
 
-| Category | Services |
-|---|---|
-| **Email** | Gmail, Outlook, SMTP |
-| **Messaging** | Slack, Discord, Telegram, WhatsApp, SMS |
-| **Productivity** | Notion, Airtable, Google Sheets, Jira, Linear, Trello |
-| **Social** | Twitter/X, LinkedIn, Instagram, WordPress |
-| **Files** | Google Drive, Dropbox, S3, PDF, CSV |
-| **Dev** | GitHub, GitLab, CI/CD, webhooks, databases |
-| **AI** | GPT-4 summaries, image gen, classification, OCR |
-| **Monitoring** | RSS alerts, uptime checks, price tracking |
+| Variable | Default | Description |
+|---|---|---|
+| `FLOWBRAIN_HOST` | `127.0.0.1` | Server bind address |
+| `FLOWBRAIN_PORT` | `8001` | Server port |
+| `N8N_DEFAULT_WEBHOOK` | (none) | n8n webhook URL |
+| `FLOWBRAIN_MIN_AUTOEXEC_CONFIDENCE` | `0.85` | Min confidence for auto-execution |
 
----
+## API Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/status` | GET | Server health and workflow count |
+| `/search` | POST | Semantic search (returns matches) |
+| `/preview` | POST | Preview an automation (no side effects) |
+| `/auto` | POST | Find + optionally execute a workflow |
+| `/docs` | GET | Interactive API documentation |
+
+## OpenClaw Integration
+
+If you use OpenClaw, FlowBrain integrates as an `n8n-flows` skill. See [INTEGRATION.md](INTEGRATION.md) for setup details.
 
 ## Architecture
 
 ```
-n8n-flow-finder/
-├── run.py              # Single entrypoint — setup + serve
-├── harvester.py        # Downloads 8,000+ workflows from n8n.io + GitHub
-├── indexer.py          # ChromaDB vector index with sentence-transformers
-├── enricher.py         # Auto-generates descriptions (Ollama / rule-based)
-├── router.py           # Semantic search — finds best workflow match
-├── auto_executor.py    # Full pipeline: search → extract params → execute
-├── server.py           # FastAPI HTTP server (port 8001)
-├── mcp_server.py       # MCP server — exposes top 50 workflows as tools
-├── SKILL.md            # OpenClaw skill definition (auto-installed)
-├── n8n_dispatcher.json # Importable n8n workflow for execution routing
-├── docker-compose.yml  # n8n + flow-finder + ollama stack
-└── requirements.txt
+flowbrain/              Python package
+  config/               Config loader (dotenv, defaults)
+  cli/                  CLI (install, doctor, search, preview, run, reindex, logs)
+  policies/             Safety (confidence gating, risk classification, preview)
+  state/                SQLite run history and audit trail
+  diagnostics/          Doctor health checks (15 checks)
+server.py               FastAPI HTTP API + web UI
+router.py               Semantic search engine (ChromaDB + hybrid re-ranking)
+reranker.py             Keyword overlap scoring + hybrid merger
+embedding.py            Embedding function factory (real model + offline fallback)
+auto_executor.py        Autonomous find + extract + execute pipeline
+harvester.py            Downloads workflow templates from n8n.io
+indexer.py              Builds the vector search index (enriched documents)
+enricher.py             Auto-generates workflow descriptions
+bootstrap.sh            Single-command setup from zero
 ```
-
----
-
-## API Reference
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/auto` | POST | **Main endpoint** — find + execute any workflow |
-| `/search` | POST | Semantic search without executing |
-| `/status` | GET | Server health + workflow count |
-| `/chat` | POST | Conversational interface |
-
-### `/auto` Example
-
-```bash
-curl -X POST http://localhost:8001/auto \
-  -H "Content-Type: application/json" \
-  -d '{"intent": "Send email to alice@company.com saying the report is ready"}'
-```
-
-```json
-{
-  "success": true,
-  "workflow_name": "Send Gmail email",
-  "confidence": 0.89,
-  "message": "✅ Found the right automation...",
-  "needs_webhook": false
-}
-```
-
----
-
-## Docker
-
-```bash
-docker compose up -d                    # n8n + flow-finder
-docker compose --profile ollama up -d  # + local LLM for smarter parameter extraction
-```
-
----
 
 ## License
 
-MIT — build freely, automate everything.
+MIT

@@ -16,8 +16,14 @@ import os
 import time
 import argparse
 import subprocess
-import webbrowser
 from pathlib import Path
+
+# ── Load dotenv FIRST — before any os.getenv calls ───────────────────────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # ── Console colors ────────────────────────────────────────────────────────────
 BOLD   = "\033[1m"
@@ -28,7 +34,9 @@ RED    = "\033[91m"
 DIM    = "\033[2m"
 RESET  = "\033[0m"
 
-PORT = int(os.getenv("PORT", 8000))
+# Now safe to read PORT — dotenv already loaded
+PORT = int(os.getenv("FLOWBRAIN_PORT", os.getenv("PORT", 8001)))
+HOST = os.getenv("FLOWBRAIN_HOST", os.getenv("HOST", "127.0.0.1"))
 
 def banner():
     print(f"""
@@ -198,36 +206,22 @@ def run_setup(rebuild: bool = False) -> bool:
 
 # ── Server ────────────────────────────────────────────────────────────────────
 
-def start_server(open_browser: bool = True):
+def start_server(open_browser: bool = False):
     """Start the FastAPI server."""
     print(f"\n{'─'*54}")
     print(f"{GREEN}{BOLD}  🧠 Starting FlowBrain...{RESET}")
     print(f"{'─'*54}")
-    print(f"  Open in browser: {CYAN}http://localhost:{PORT}{RESET}")
-    print(f"  API docs:        {CYAN}http://localhost:{PORT}/docs{RESET}")
-    print(f"  Stop server:     {DIM}Ctrl+C{RESET}")
+    print(f"  Server:    {CYAN}http://{HOST}:{PORT}{RESET}")
+    print(f"  API docs:  {CYAN}http://{HOST}:{PORT}/docs{RESET}")
+    print(f"  Stop:      {DIM}Ctrl+C{RESET}")
     print(f"{'─'*54}\n")
 
-    # Load dotenv before starting
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass
-
-    if open_browser:
-        # Open browser after a short delay
-        def _open():
-            time.sleep(2)
-            webbrowser.open(f"http://localhost:{PORT}")
-
-        import threading
-        threading.Thread(target=_open, daemon=True).start()
+    # dotenv already loaded at module level — no duplicate load needed
 
     import uvicorn
     uvicorn.run(
         "server:app",
-        host="0.0.0.0",
+        host=HOST,
         port=PORT,
         reload=False,
         log_level="warning",
@@ -240,7 +234,7 @@ def main():
     banner()
 
     parser = argparse.ArgumentParser(
-        description="n8n Flow Finder — all-in-one launcher",
+        description="FlowBrain — all-in-one launcher",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -260,7 +254,7 @@ Examples:
     if args.serve:
         # Just start the server — skip all setup checks
         if not index_is_built():
-            warn("Index not found. Run `python run.py --setup` first.")
+            warn("Index not found. Run `flowbrain reindex` or `python run.py --setup` first.")
             sys.exit(1)
         start_server(open_browser=not args.no_browser)
 

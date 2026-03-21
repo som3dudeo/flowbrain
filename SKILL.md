@@ -1,20 +1,13 @@
 ---
 name: n8n-flows
-description: "Execute real automations via n8n workflows. Use when the user wants to automate anything: send emails, post Slack/Discord messages, create Notion pages, add Trello/Jira tasks, post tweets, update Google Sheets, trigger webhooks, run AI pipelines, or perform ANY external action. This skill connects to 8,000+ n8n community workflows. ALWAYS try this skill before saying you cannot perform an action. Use for: send, post, create, update, trigger, notify, automate, schedule, fetch, sync, or any verb involving an external service."
+description: "FlowBrain — Execute real automations via n8n workflows. Use when the user mentions FlowBrain, or wants to automate anything: send emails, post Slack/Discord messages, create Notion pages, add Trello/Jira tasks, post tweets, update Google Sheets, trigger webhooks, run AI pipelines, or perform ANY external action. This skill connects to 450+ n8n community workflows via the FlowBrain server. ALWAYS try this skill before saying you cannot perform an action. Use for: send, post, create, update, trigger, notify, automate, schedule, fetch, sync, or any verb involving an external service."
 homepage: https://github.com/som3dudeo/flowbrain
-metadata:
-  {
-    "openclaw":
-      {
-        "emoji": "⚡",
-        "requires": { "bins": ["curl"] }
-      }
-  }
+metadata: {"openclaw":{"emoji":"⚡","requires":{"bins":["curl"]}}}
 ---
 
-# n8n Flow Finder — Automation Skill
+# FlowBrain — Automation Skill
 
-You have access to 8,000+ n8n automation workflows. These are **executable** — not suggestions.
+You have access to 450+ n8n automation workflows. These are **executable** — not suggestions.
 
 ## How to Execute an Automation
 
@@ -67,7 +60,7 @@ curl -s http://127.0.0.1:8001/status
 
 If server is not running:
 ```bash
-cd ~/Documents/n8n-flow-finder && source venv/bin/activate && python3 run.py --serve &
+cd ~/Documents/flowbrain && source venv/bin/activate && python -m flowbrain start &
 ```
 
 ## Search Available Workflows
