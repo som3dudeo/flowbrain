@@ -54,7 +54,7 @@ from flowbrain.agents.delegation import build_delegation_plan
 from flowbrain.policies.risk import classify_risk, get_affected_systems
 from flowbrain.policies.preview import build_preview
 from flowbrain.policies.confidence import should_auto_execute as policy_should_auto_execute
-from flowbrain.state.db import record_preview, new_preview_id, record_run
+from flowbrain.state.db import record_preview, new_preview_id, record_run, get_outcome_metrics
 from router import get_router
 from indexer import get_index_stats
 from auto_executor import get_executor, AutoResult
@@ -197,6 +197,13 @@ async def status():
             "bind_address": HOST,
             "localhost_only": HOST in ("127.0.0.1", "localhost", "::1"),
         },
+        "observability": {
+            "request_tracing": True,
+            "sqlite_state": True,
+            "metrics_endpoint": "/metrics",
+            "logs_hint": os.getenv("FLOWBRAIN_LOG_FILE", "console only"),
+        },
+        "outcomes": get_outcome_metrics(),
     }
 
 
@@ -204,6 +211,15 @@ async def status():
 async def agents():
     registry = list_agents()
     return {"count": len(registry), "agents": registry}
+
+
+@app.get("/metrics")
+async def metrics():
+    return {
+        "product": "FlowBrain",
+        "metrics": get_outcome_metrics(),
+        "how_to_use": "Use these local counters to compare preview-heavy vs execute-heavy usage on your own instance.",
+    }
 
 
 @app.post("/route")
@@ -451,6 +467,8 @@ async def preview(req: PreviewRequest):
         "would_auto_execute": would_auto,
         "execution_blocked": blocked,
         "block_reason": block_reason,
+        "decision": "preview-ready" if not blocked else "preview-blocked",
+        "next_step": "Review the preview and run /auto with auto_execute=true only if the action looks correct.",
         "alternatives": alternatives,
         "source_url": best.source_url,
         "action_summary": f"Will interact with: {', '.join(systems)}" if systems else "Internal workflow",
@@ -549,25 +567,35 @@ async def auto(req: AutoRequest):
     needs_webhook = not webhook_url
 
     if actually_executed and success:
+        decision = "executed"
+        next_step = "Execution completed. Inspect execution_result and your downstream system for the final effect."
         message = (
             f"✅ Executed: **{best.name}** ({int(best.confidence*100)}% confidence)\n"
             f"Risk: {risk.value} | Systems: {', '.join(systems) or 'none'}\n"
             f"Response: {exec_result.get('response', 'Done.')}"
         )
     elif actually_executed and not success:
+        decision = "execution-failed"
+        next_step = "Check the webhook target, server logs, and the execution_result error before retrying."
         message = f"❌ Execution failed: {exec_result.get('error', 'Unknown error')}"
     elif needs_webhook:
+        decision = "needs-webhook"
+        next_step = "Configure N8N_DEFAULT_WEBHOOK (or a workflow-specific webhook) and retry."
         message = (
             f"Found: **{best.name}** ({int(best.confidence*100)}% confidence)\n"
             f"⚠️ No webhook configured. Add N8N_DEFAULT_WEBHOOK to .env."
         )
     elif block_reason:
+        decision = "blocked"
+        next_step = "Use /preview first, tighten the intent, or add explicit params until the safety gate is satisfied."
         message = (
             f"Found: **{best.name}** ({int(best.confidence*100)}% confidence)\n"
             f"Risk: {risk.value} | Systems: {', '.join(systems) or 'none'}\n"
             f"⏸ Not executed: {block_reason}"
         )
     else:
+        decision = "matched"
+        next_step = "Review the match and choose whether to keep this as preview-only or request execution."
         message = f"Found: **{best.name}** ({int(best.confidence*100)}% confidence)"
 
     duration_ms = int((time.time() - t0) * 1000)
@@ -610,6 +638,8 @@ async def auto(req: AutoRequest):
         "session_id":       session_id,
         "auto_executed":    actually_executed,
         "block_reason":     block_reason,
+        "decision":         decision,
+        "next_step":        next_step,
         "duration_ms":      duration_ms,
     }
 

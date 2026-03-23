@@ -26,6 +26,8 @@ def test_preview_returns_structured_response():
         assert "intent" in data
         assert "risk_level" in data
         assert "confidence" in data or "confidence_pct" in data
+        assert data.get("decision") in {"preview-ready", "preview-blocked"}
+        assert "next_step" in data
 
 
 def test_preview_has_no_side_effects():

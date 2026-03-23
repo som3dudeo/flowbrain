@@ -201,6 +201,10 @@ def cmd_status(args):
             print(f"  n8n:        {'connected' if data.get('n8n_connected') else 'not connected'}")
             print(f"  Sessions:   {data.get('active_sessions', 0)}")
             print(f"  Agents:     {data.get('registered_agents', 0)}")
+            outcomes = data.get('outcomes', {})
+            if outcomes:
+                print(f"  Runs:       {outcomes.get('total_runs', 0)} total | {outcomes.get('executed_successes', 0)} executed | {outcomes.get('preview_only_runs', 0)} preview-only")
+                print(f"  Blocks:     {outcomes.get('blocked_or_failed_runs', 0)} blocked/failed | {outcomes.get('missing_webhook_blocks', 0)} missing webhook")
             print(f"  Endpoint:   http://{cfg.host}:{cfg.port}")
             print()
         else:

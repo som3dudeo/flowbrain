@@ -1,5 +1,35 @@
 # Changelog
 
+## v2.6.0 — FlowBrain v2 Feedback Pass
+
+### Onboarding / First Win
+- Added `docs/QUICKSTART.md` with a preview-first demo path and verification checklist.
+- Expanded `README.md` with clearer trust, safety, and roadmap links.
+
+### Trust / Safety
+- Added `docs/SECURITY.md` and `docs/PRIVACY.md`.
+- Clarified product boundaries so non-workflow paths stay honest delegation plans.
+
+### Failure / Fallback / Observability
+- Added `docs/OPERATIONS.md`.
+- Added SQLite-backed runtime outcome metrics and a new `GET /metrics` endpoint.
+- Expanded `/status` to report observability and outcome summaries.
+- `/auto` and `/preview` now return `decision` and `next_step` fields.
+- CLI `flowbrain status` now shows a compact outcomes summary.
+
+### Evidence / Evaluation
+- Added `docs/EVALUATION.md` and `docs/AGENTDISCUSS_RESPONSE.md`.
+- Outcome metrics now summarize preview-only runs, execute attempts, successful executions, blocks, missing-webhook friction, and risk breakdown.
+
+### Roadmap
+- Added `docs/ROADMAP.md` to make the path beyond n8n explicit.
+
+### Tests
+- Added `tests/test_metrics.py`.
+- Test suite now passes with 103 tests.
+
+---
+
 ## v2.5.0 — Public Beta Polish + Hardening
 
 ### Public Release Polish

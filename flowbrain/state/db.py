@@ -170,6 +170,60 @@ def get_recent_previews(limit: int = 20) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def get_outcome_metrics() -> dict:
+    """Return compact local evidence about preview-vs-execute outcomes."""
+    with get_db() as conn:
+        totals = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_runs,
+                SUM(CASE WHEN auto_execute = 1 THEN 1 ELSE 0 END) AS auto_execute_requests,
+                SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS executed_successes,
+                SUM(CASE WHEN success = 0 AND auto_execute = 1 AND needs_webhook = 1 THEN 1 ELSE 0 END) AS missing_webhook_blocks,
+                SUM(CASE WHEN success = 0 AND auto_execute = 0 THEN 1 ELSE 0 END) AS preview_only_runs,
+                SUM(CASE WHEN success = 0 AND auto_execute = 1 AND needs_webhook = 0 THEN 1 ELSE 0 END) AS blocked_or_failed_runs,
+                AVG(duration_ms) AS avg_duration_ms
+            FROM runs
+            """
+        ).fetchone()
+
+        preview_totals = conn.execute(
+            "SELECT COUNT(*) AS total_previews, SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) AS blocked_previews FROM previews"
+        ).fetchone()
+
+        risk_rows = conn.execute(
+            "SELECT risk_level, COUNT(*) AS count FROM runs GROUP BY risk_level ORDER BY count DESC"
+        ).fetchall()
+
+    total_runs = int(totals["total_runs"] or 0)
+    auto_execute_requests = int(totals["auto_execute_requests"] or 0)
+    executed_successes = int(totals["executed_successes"] or 0)
+    missing_webhook_blocks = int(totals["missing_webhook_blocks"] or 0)
+    preview_only_runs = int(totals["preview_only_runs"] or 0)
+    blocked_or_failed_runs = int(totals["blocked_or_failed_runs"] or 0)
+    total_previews = int(preview_totals["total_previews"] or 0)
+    blocked_previews = int(preview_totals["blocked_previews"] or 0)
+
+    executed_success_rate = round(executed_successes / auto_execute_requests, 3) if auto_execute_requests else None
+    preview_block_rate = round(blocked_previews / total_previews, 3) if total_previews else None
+
+    return {
+        "total_runs": total_runs,
+        "auto_execute_requests": auto_execute_requests,
+        "executed_successes": executed_successes,
+        "missing_webhook_blocks": missing_webhook_blocks,
+        "preview_only_runs": preview_only_runs,
+        "blocked_or_failed_runs": blocked_or_failed_runs,
+        "total_previews": total_previews,
+        "blocked_previews": blocked_previews,
+        "executed_success_rate": executed_success_rate,
+        "preview_block_rate": preview_block_rate,
+        "avg_duration_ms": round(float(totals["avg_duration_ms"] or 0.0), 1),
+        "risk_breakdown": {row["risk_level"] or "unknown": int(row["count"] or 0) for row in risk_rows},
+        "note": "Local runtime evidence from FlowBrain's SQLite state; not a benchmark or claim about general agent reliability.",
+    }
+
+
 def record_doctor(checks: list[dict], passed: int, failed: int, warnings: int):
     with get_db() as conn:
         conn.execute(

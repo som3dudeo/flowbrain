@@ -25,6 +25,8 @@ def test_auto_preview_mode_default():
     if _index_available(data):
         assert data.get("auto_executed") is False
         assert "block_reason" in data
+        assert data.get("decision") in {"blocked", "matched", "needs-webhook", "executed", "execution-failed"}
+        assert "next_step" in data
 
 
 def test_auto_includes_safety_fields():
