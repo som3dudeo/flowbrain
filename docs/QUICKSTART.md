@@ -25,7 +25,21 @@ You want to see:
 
 ## 2) Get a safe first win
 
-Start with preview mode. Do not wire live webhooks yet.
+Fastest path: run the built-in smoke test.
+
+```bash
+python -m flowbrain smoke
+```
+
+That checks the key product surfaces a first-time reviewer should care about:
+- `/status`
+- `/examples`
+- `/preview`
+- `/manage`
+- `/metrics`
+- `/eval`
+
+If you want to inspect the preview path manually, do that before wiring live webhooks:
 
 ```bash
 curl -s -X POST http://127.0.0.1:8001/preview \

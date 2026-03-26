@@ -55,6 +55,7 @@ from flowbrain.policies.risk import classify_risk, get_affected_systems
 from flowbrain.policies.preview import build_preview
 from flowbrain.policies.confidence import should_auto_execute as policy_should_auto_execute
 from flowbrain.state.db import record_preview, new_preview_id, record_run, get_outcome_metrics
+from flowbrain.diagnostics.eval import get_example_intents, run_benchmark
 from router import get_router
 from indexer import get_index_stats
 from auto_executor import get_executor, AutoResult
@@ -201,7 +202,14 @@ async def status():
             "request_tracing": True,
             "sqlite_state": True,
             "metrics_endpoint": "/metrics",
+            "benchmark_endpoint": "/eval",
+            "examples_endpoint": "/examples",
             "logs_hint": os.getenv("FLOWBRAIN_LOG_FILE", "console only"),
+        },
+        "getting_started": {
+            "recommended_path": "Start with /preview before wiring live webhooks.",
+            "examples_endpoint": "/examples",
+            "benchmark_endpoint": "/eval",
         },
         "outcomes": get_outcome_metrics(),
     }
@@ -219,6 +227,24 @@ async def metrics():
         "product": "FlowBrain",
         "metrics": get_outcome_metrics(),
         "how_to_use": "Use these local counters to compare preview-heavy vs execute-heavy usage on your own instance.",
+    }
+
+
+@app.get("/examples")
+async def examples():
+    return {
+        "product": "FlowBrain",
+        "recommended_path": "Start with /preview, then /manage, then /metrics.",
+        "examples": get_example_intents(),
+    }
+
+
+@app.get("/eval")
+async def evaluate():
+    return {
+        "product": "FlowBrain",
+        "benchmark": run_benchmark(),
+        "how_to_use": "Use this fixed local benchmark to check whether retrieval still works after product or indexing changes.",
     }
 
 
@@ -765,6 +791,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px
 }
 .btn-new:hover{border-color:var(--accent);color:var(--accent)}
+.sidebar-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.sidebar-link{
+  font-size:11px;padding:5px 8px;border-radius:999px;border:1px solid var(--border);
+  color:var(--muted2);text-decoration:none;background:var(--bg3);cursor:pointer;
+}
+.sidebar-link:hover{border-color:var(--accent);color:var(--accent)}
+.sidebar-note{font-size:11px;color:var(--muted);line-height:1.45;margin-top:10px}
 
 /* ── Main chat area ── */
 .chat-area{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
@@ -850,8 +883,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 }
 .welcome-icon{font-size:52px;margin-bottom:20px}
 .welcome h2{font-size:22px;font-weight:700;margin-bottom:8px}
-.welcome p{font-size:14px;color:var(--muted2);line-height:1.6;max-width:440px;margin-bottom:28px}
-.examples-grid{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:520px}
+.welcome p{font-size:14px;color:var(--muted2);line-height:1.6;max-width:560px;margin-bottom:18px}
+.welcome-sub{font-size:12px;color:var(--muted);max-width:560px;line-height:1.55;margin-bottom:24px}
+.proof-strip{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:560px;margin-bottom:20px}
+.proof-chip{
+  font-size:11px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);
+  background:var(--bg3);color:var(--muted2);text-decoration:none;
+}
+.proof-chip:hover{border-color:var(--accent);color:var(--accent)}
+.examples-grid{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:560px}
 .ex-chip{
   font-size:12px;padding:7px 14px;border-radius:20px;
   background:var(--bg3);border:1px solid var(--border);color:var(--muted2);
@@ -927,6 +967,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     </div>
     <div class="sidebar-footer">
       <button class="btn-new" onclick="newSession()">＋ New Search</button>
+      <div class="sidebar-links">
+        <a class="sidebar-link" href="/examples" target="_blank" rel="noopener">/examples</a>
+        <a class="sidebar-link" href="/metrics" target="_blank" rel="noopener">/metrics</a>
+        <a class="sidebar-link" href="/eval" target="_blank" rel="noopener">/eval</a>
+      </div>
+      <div class="sidebar-note">Start with preview-first examples, then inspect metrics and the fixed benchmark if you want proof that routing still works.</div>
     </div>
   </div>
 
@@ -936,17 +982,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       <!-- Welcome screen shown on first load -->
       <div class="welcome" id="welcome">
         <div class="welcome-icon">🔍</div>
-        <h2>What do you want to automate?</h2>
-        <p>Describe what you want to do in plain English. FlowBrain will find the best n8n workflow, extract parameters, and execute it safely.</p>
-        <div class="examples-grid">
-          <div class="ex-chip" onclick="sendExample(this)">Notify Slack when Typeform submitted</div>
-          <div class="ex-chip" onclick="sendExample(this)">Save Gmail attachments to Google Drive</div>
-          <div class="ex-chip" onclick="sendExample(this)">Create Jira ticket from GitHub issue</div>
-          <div class="ex-chip" onclick="sendExample(this)">Summarize emails with AI and post to Notion</div>
-          <div class="ex-chip" onclick="sendExample(this)">Sync Airtable rows to HubSpot contacts</div>
-          <div class="ex-chip" onclick="sendExample(this)">Send daily Slack digest from RSS feed</div>
-          <div class="ex-chip" onclick="sendExample(this)">Post new YouTube videos to Discord</div>
-          <div class="ex-chip" onclick="sendExample(this)">Backup Google Sheets to Dropbox weekly</div>
+        <h2>Start with a safe first win</h2>
+        <p>FlowBrain is strongest when it is explicit about what will execute, what should stay preview-only, and what should return a delegation plan instead of fake autonomy.</p>
+        <div class="proof-strip">
+          <a class="proof-chip" href="/status" target="_blank" rel="noopener">status</a>
+          <a class="proof-chip" href="/metrics" target="_blank" rel="noopener">metrics</a>
+          <a class="proof-chip" href="/eval" target="_blank" rel="noopener">local benchmark</a>
+        </div>
+        <div class="welcome-sub">Try one preview example first, then test a coding-style request to see the agent-manager boundary. The examples below are loaded from <code>/examples</code>.</div>
+        <div class="examples-grid" id="examples-grid">
+          <div class="ex-chip" onclick="sendExample(this)">send a slack message when deploy finishes</div>
+          <div class="ex-chip" onclick="sendExample(this)">fix this repo bug and add tests</div>
+          <div class="ex-chip" onclick="sendExample(this)">post a public update to slack about the deployment</div>
         </div>
       </div>
     </div>
@@ -955,12 +1002,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     <div class="input-bar">
       <div class="input-row">
         <textarea id="msg-input" rows="1"
-          placeholder="Describe what you want to automate..."
+          placeholder="Describe what you want FlowBrain to route, preview, or execute..."
           oninput="autoResize(this)"
           onkeydown="handleKey(event)"></textarea>
         <button id="send-btn" onclick="sendMessage()" title="Send (Enter)">▶</button>
       </div>
-      <div class="input-hint">Press Enter to search · Shift+Enter for new line</div>
+      <div class="input-hint">Press Enter to search · Shift+Enter for new line · safest first step: preview a workflow request</div>
     </div>
   </div>
 
@@ -975,6 +1022,7 @@ let isLoading = false;
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   checkStatus();
+  loadExamples();
   document.getElementById('msg-input').focus();
 });
 
@@ -1005,13 +1053,31 @@ async function checkStatus() {
   }
 }
 
+async function loadExamples() {
+  try {
+    const payload = await (await fetch('/examples')).json();
+    const grid = document.getElementById('examples-grid');
+    const examples = payload.examples || [];
+    if (!grid || !examples.length) return;
+    grid.innerHTML = examples.map(ex =>
+      `<div class="ex-chip" title="${esc(ex.why || '')}" onclick="sendExampleText('${esc(ex.intent)}')">${esc(ex.intent)}</div>`
+    ).join('');
+  } catch (e) {
+    // Keep the built-in fallback examples if the endpoint is unavailable.
+  }
+}
+
 // ── Sending messages ──────────────────────────────────────────────────────────
 function handleKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
 
 function sendExample(el) {
-  document.getElementById('msg-input').value = el.textContent;
+  sendExampleText(el.textContent);
+}
+
+function sendExampleText(text) {
+  document.getElementById('msg-input').value = text;
   sendMessage();
 }
 

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/som3dudeo/flowbrain/actions"><img alt="tests" src="https://img.shields.io/badge/tests-56%20passing-22c55e?style=for-the-badge"></a>
+  <a href="https://github.com/som3dudeo/flowbrain/actions"><img alt="tests" src="https://img.shields.io/badge/tests-105%20passing-22c55e?style=for-the-badge"></a>
   <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
   <img alt="fastapi" src="https://img.shields.io/badge/FastAPI-agent%20API-059669?style=for-the-badge&logo=fastapi&logoColor=white">
   <img alt="n8n" src="https://img.shields.io/badge/n8n-450%2B%20workflows-EA4B71?style=for-the-badge&logo=n8n&logoColor=white">
@@ -171,7 +171,21 @@ curl -s http://127.0.0.1:8001/status
 
 ### The fastest first win
 
-Do this before wiring any live webhook:
+If you only run one command after startup, run the smoke test:
+
+```bash
+python -m flowbrain smoke
+```
+
+That checks:
+- `/status`
+- `/examples`
+- `/preview`
+- `/manage`
+- `/metrics`
+- `/eval`
+
+If you want to inspect the surfaces manually, start with preview mode before wiring any live webhook:
 
 ```bash
 curl -s -X POST http://127.0.0.1:8001/preview \
@@ -188,8 +202,11 @@ You should get:
 Then inspect local evidence:
 
 ```bash
+curl -s http://127.0.0.1:8001/examples
 curl -s http://127.0.0.1:8001/metrics
+curl -s http://127.0.0.1:8001/eval
 python -m flowbrain status
+python -m flowbrain eval
 ```
 
 For the short version, see [docs/QUICKSTART.md](docs/QUICKSTART.md).
@@ -205,7 +222,10 @@ All commands run through `python -m flowbrain <command>`.
 | `flowbrain install` | Install deps, download workflows, build the index, run doctor |
 | `flowbrain doctor` | Run health checks |
 | `flowbrain start` | Start the API server |
-| `flowbrain status` | Show workflow count, agents, and runtime health |
+| `flowbrain status` | Show workflow count, agents, runtime health, and outcomes |
+| `flowbrain examples` | Show guided first-run examples |
+| `flowbrain smoke` | Run the shortest honest end-to-end smoke test |
+| `flowbrain eval` | Run the fixed local benchmark |
 | `flowbrain agents` | List registered agents |
 | `flowbrain route "..."` | Show which agent would handle a request and why |
 | `flowbrain search "..."` | Search workflow matches |

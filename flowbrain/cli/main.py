@@ -37,6 +37,7 @@ os.chdir(str(_PROJECT_ROOT))
 from flowbrain import __version__
 from flowbrain.agents import list_agents as list_registered_agents, route_request
 from flowbrain.config import get_config
+from flowbrain.diagnostics.eval import get_example_intents, run_benchmark
 
 BOLD = "\033[1m"
 GREEN = "\033[92m"
@@ -213,6 +214,145 @@ def cmd_status(args):
         print(f"\n  {RED}FlowBrain is not running{RESET}")
         print(f"  Start with: python -m flowbrain start\n")
         sys.exit(1)
+
+
+def cmd_examples(args):
+    """Show guided first-run examples."""
+    examples = get_example_intents()
+    print(f"\n{BOLD}FlowBrain Examples{RESET}")
+    print(f"{'─' * 70}")
+    print("  Start with the preview-first example, then try the delegation boundary.")
+    for i, ex in enumerate(examples, 1):
+        print(f"\n  {BOLD}#{i} {ex['label']}{RESET}")
+        print(f"    intent:   {ex['intent']}")
+        print(f"    endpoint: {ex['endpoint']} | expected: {ex['expected_mode']}")
+        print(f"    why:      {ex['why']}")
+    print()
+
+
+def cmd_eval(args):
+    """Run the fixed local benchmark and print a compact summary."""
+    summary = run_benchmark(top_k=args.top_k)
+    print(f"\n{BOLD}FlowBrain Local Benchmark{RESET}")
+    print(f"{'─' * 70}")
+    if not summary.get('ready'):
+        print(f"  {YELLOW}Index not ready{RESET} — {summary.get('message', 'Run `flowbrain reindex` first.')}")
+        print()
+        sys.exit(1)
+
+    passed = summary.get('passed', 0)
+    total = summary.get('fixture_count', 0)
+    failed = summary.get('failed', 0)
+    rate = summary.get('pass_rate', 0.0)
+    color = GREEN if rate >= 0.8 else YELLOW if rate >= 0.6 else RED
+    print(f"  Fixtures:   {total}")
+    print(f"  Passed:     {GREEN}{passed}{RESET}")
+    print(f"  Failed:     {RED if failed else GREEN}{failed}{RESET}")
+    print(f"  Pass rate:  {color}{int(rate * 100)}%{RESET}")
+
+    failing = [r for r in summary.get('results', []) if not r.get('passed')]
+    if failing:
+        print(f"\n  {BOLD}Failures{RESET}")
+        for row in failing[:10]:
+            print(f"    - {row['intent']}")
+            print(f"      got: {row.get('top_workflow') or 'no match'} @ {int(row.get('confidence', 0.0) * 100)}%")
+            checks = row.get('checks', {})
+            print(f"      checks: nodes={checks.get('nodes')} category={checks.get('category')} confidence={checks.get('confidence')}")
+    else:
+        print(f"\n  {GREEN}All fixed benchmark fixtures passed.{RESET}")
+    print()
+
+
+def cmd_smoke(args):
+    """Run the shortest end-to-end product smoke test against a running server."""
+    cfg = get_config()
+    base = f"http://{cfg.host}:{cfg.port}"
+    try:
+        import httpx
+        client = httpx.Client(timeout=10)
+    except Exception as e:
+        print(f"\n  {RED}Could not start HTTP client: {e}{RESET}\n")
+        sys.exit(1)
+
+    checks = []
+
+    def record(ok: bool, label: str, detail: str = ""):
+        checks.append((ok, label, detail))
+        icon = f"{GREEN}✓{RESET}" if ok else f"{RED}✗{RESET}"
+        suffix = f"  {DIM}{detail}{RESET}" if detail else ""
+        print(f"  {icon}  {label}{suffix}")
+
+    print(f"\n{BOLD}FlowBrain Smoke Test{RESET}")
+    print(f"{'─' * 70}")
+    print(f"  Target: {base}\n")
+
+    try:
+        status = client.get(f"{base}/status")
+        status.raise_for_status()
+        sd = status.json()
+        ready = sd.get('status') == 'ready'
+        record(ready, '/status ready', f"{sd.get('workflows_indexed', 0)} workflows indexed")
+    except Exception as e:
+        record(False, '/status ready', str(e))
+        print(f"\n  {YELLOW}Start the server first: python -m flowbrain start{RESET}\n")
+        sys.exit(1)
+
+    try:
+        ex = client.get(f"{base}/examples")
+        ex.raise_for_status()
+        examples = ex.json().get('examples', [])
+        record(bool(examples), '/examples returns guided intents', f"{len(examples)} examples")
+    except Exception as e:
+        examples = []
+        record(False, '/examples returns guided intents', str(e))
+
+    preview_intent = examples[0]['intent'] if examples else 'send a slack message when deploy finishes'
+    delegation_intent = examples[1]['intent'] if len(examples) > 1 else 'fix this repo bug and add tests'
+
+    try:
+        preview = client.post(f"{base}/preview", json={'intent': preview_intent})
+        preview.raise_for_status()
+        pd = preview.json()
+        ok = bool(pd.get('workflow_name')) and 'decision' in pd and 'next_step' in pd
+        detail = f"{pd.get('decision', '?')} · {pd.get('confidence_pct', '?')}"
+        record(ok, '/preview returns decision + next_step', detail)
+    except Exception as e:
+        record(False, '/preview returns decision + next_step', str(e))
+
+    try:
+        manage = client.post(f"{base}/manage", json={'intent': delegation_intent})
+        manage.raise_for_status()
+        md = manage.json()
+        ok = 'delegation' in md and bool(md.get('next_step'))
+        detail = md.get('route', {}).get('execution_mode', 'unknown')
+        record(ok, '/manage shows delegation boundary', detail)
+    except Exception as e:
+        record(False, '/manage shows delegation boundary', str(e))
+
+    try:
+        metrics = client.get(f"{base}/metrics")
+        metrics.raise_for_status()
+        mt = metrics.json().get('metrics', {})
+        record(isinstance(mt, dict), '/metrics reachable', f"{mt.get('total_runs', 0)} total runs")
+    except Exception as e:
+        record(False, '/metrics reachable', str(e))
+
+    try:
+        bench = client.get(f"{base}/eval")
+        bench.raise_for_status()
+        bd = bench.json().get('benchmark', {})
+        ok = 'pass_rate' in bd and 'fixture_count' in bd
+        detail = f"{int(float(bd.get('pass_rate', 0.0)) * 100)}% of {bd.get('fixture_count', 0)} fixtures"
+        record(ok, '/eval benchmark reachable', detail)
+    except Exception as e:
+        record(False, '/eval benchmark reachable', str(e))
+
+    failures = [c for c in checks if not c[0]]
+    print(f"\n{'─' * 70}")
+    if failures:
+        print(f"  {YELLOW}{len(failures)} smoke check(s) failed.{RESET}")
+        sys.exit(1)
+    print(f"  {GREEN}All smoke checks passed.{RESET}\n")
 
 
 # ── agents / route ───────────────────────────────────────────────────────────
@@ -470,12 +610,16 @@ def main():
   flowbrain install                           One-command setup
   flowbrain doctor                            Check system health
   flowbrain start                             Start the server
+  flowbrain status                            Show runtime status and outcomes
+  flowbrain examples                          Show guided first-run examples
+  flowbrain smoke                             Run the shortest end-to-end product smoke test
+  flowbrain eval                              Run the fixed local benchmark
   flowbrain agents                            List registered agents
   flowbrain route "fix repo bug"             Show which agent would handle it
   flowbrain search "slack notification"       Find workflows
   flowbrain preview "email alice@co.com"      Preview without executing
   flowbrain run "post to #general done"       Execute an automation
-  flowbrain reindex                            Rebuild search index (improves quality)
+  flowbrain reindex                           Rebuild search index (improves quality)
   flowbrain logs                              Show recent history{RESET}"""
     )
 
@@ -497,6 +641,19 @@ def main():
     # status
     p = sub.add_parser("status", help="Show server status")
     p.set_defaults(func=cmd_status)
+
+    # examples
+    p = sub.add_parser("examples", help="Show guided first-run examples")
+    p.set_defaults(func=cmd_examples)
+
+    # smoke
+    p = sub.add_parser("smoke", help="Run the shortest end-to-end product smoke test")
+    p.set_defaults(func=cmd_smoke)
+
+    # eval
+    p = sub.add_parser("eval", help="Run the fixed local benchmark")
+    p.add_argument("-n", "--top-k", type=int, default=1, help="Number of results to inspect per fixture")
+    p.set_defaults(func=cmd_eval)
 
     # agents
     p = sub.add_parser("agents", help="List registered agents")

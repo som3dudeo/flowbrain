@@ -73,9 +73,32 @@ def test_status_and_metrics_endpoints_include_outcomes():
     assert "outcomes" in status_data
     assert "observability" in status_data
     assert status_data["observability"]["metrics_endpoint"] == "/metrics"
+    assert status_data["observability"]["examples_endpoint"] == "/examples"
+    assert status_data["observability"]["benchmark_endpoint"] == "/eval"
+    assert status_data["getting_started"]["examples_endpoint"] == "/examples"
 
     metrics = client.get("/metrics")
     assert metrics.status_code == 200
     metrics_data = metrics.json()
     assert "metrics" in metrics_data
     assert "how_to_use" in metrics_data
+
+
+def test_examples_endpoint_returns_guided_intents():
+    resp = client.get("/examples")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["product"] == "FlowBrain"
+    assert data["examples"]
+    assert any(ex["endpoint"] == "/preview" for ex in data["examples"])
+
+
+def test_eval_endpoint_returns_benchmark_shape():
+    resp = client.get("/eval")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["product"] == "FlowBrain"
+    bench = data["benchmark"]
+    assert "ready" in bench
+    assert "fixture_count" in bench
+    assert "pass_rate" in bench

@@ -1,5 +1,27 @@
 # Changelog
 
+## v3.0.0 — Proof, UX, and Setup Pass
+
+### First-Run Usability
+- Added `flowbrain examples` to show guided first-run intents.
+- Added `flowbrain smoke` for the shortest honest end-to-end product check against a running instance.
+- Web UI welcome screen now emphasizes safe first wins, preview-first usage, and links to proof surfaces.
+- Web UI now loads guided examples from `/examples` instead of relying only on static chips.
+
+### Product Proof Surfaces
+- Added `flowbrain eval` for the fixed local benchmark.
+- Added `flowbrain.diagnostics.eval` with benchmark loading, example intents, and reusable evaluation helpers.
+- Added `GET /examples` to expose guided first-run examples.
+- Added `GET /eval` to expose the fixed local benchmark summary.
+- Expanded `/status` to advertise benchmark and examples endpoints as first-run surfaces.
+
+### Testing
+- Added endpoint coverage for `/examples` and `/eval`.
+- Test suite now passes with 105 tests.
+
+### Product Positioning
+- Tightened the first-run story around what FlowBrain actually does today: preview, execute carefully, or return a delegation plan instead of faking autonomy.
+
 ## v2.6.0 — FlowBrain v2 Feedback Pass
 
 ### Onboarding / First Win
